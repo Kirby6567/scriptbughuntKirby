@@ -1,0 +1,133 @@
+# INSTRUÇÕES DE INTEGRAÇÃO DAS ENTERPRISE FEATURES
+
+Para integrar as funções enterprise no seu script principal, adicione estas linhas nos seguintes pontos:
+
+## 1. NO INÍCIO DO SCRIPT (após setup_directories):
+```bash
+# Carregar módulo enterprise
+source "$(dirname "$0")/enterprise-features.sh" 2>/dev/null || true
+
+# Inicializar features
+init_false_positive_patterns
+```
+
+## 2. APÓS CADA FASE DE SUBDOMAIN ENUMERATION:
+```bash
+save_checkpoint "subdomain" "complete"
+filter_false_positives "subs/all_subs.txt" "subs/all_subs_filtered.txt"
+mv subs/all_subs_filtered.txt subs/all_subs.txt
+```
+
+## 3. ANTES DO HTTPX (Live Detection):
+```bash
+# Detectar WAF no primeiro host
+if [[ -s subs/all_subs.txt ]]; then
+    first_host=$(head -1 subs/all_subs.txt)
+    waf=$(detect_waf "http://$first_host")
+    adjust_for_waf "$waf"
+    [[ "$waf" != "none" ]] && send_discord_notification "🛡️ WAF Detected" "WAF: $waf - Adjusting rate limits" 16776960
+fi
+```
+
+## 4. APÓS URL COLLECTION:
+```bash
+# Priorizar targets
+prioritize_targets "urls/with_params.txt" "urls/prioritized_params.txt"
+cp urls/prioritized_params.txt urls/with_params.txt
+
+# Deduplicar
+check_system_resources
+```
+
+## 5. APÓS VULNERABILITY SCANNING:
+```bash
+# Correlacionar vulnerabilidades
+correlate_vulnerabilities
+
+# Gerar CVSS scores
+generate_cvss_report
+
+# Revalidar findings de baixa confiança
+run_revalidation
+
+# Analisar screenshots
+analyze_screenshots
+```
+
+## 6. ANTES DO RELATÓRIO FINAL:
+```bash
+# Gerar estatísticas
+generate_statistics
+
+# Exportar formatos bug bounty
+export_hackerone_format
+export_bugcrowd_format
+
+# Exportar CI/CD
+export_ci_cd_format
+```
+
+## 7. NO RELATÓRIO FINAL (adicionar ao send_discord_notification):
+```bash
+send_discord_notification "✅ Scan Complete" "
+**Profile**: $PROFILE
+**Findings**: $NUCLEI_FAST_TOTAL critical
+**SQLi**: $SQLI_VALIDATED confirmed  
+**Secrets**: $TOTAL_SECRETS exposed
+**Correlation**: $(wc -l < correlation/chains.txt 2>/dev/null || echo 0) chains
+
+Reports: bugbounty_exports/" 3066993
+```
+
+## CONFIGURAÇÃO NECESSÁRIA:
+
+1. **Discord Webhook**: Já configurado automaticamente
+   - URL: https://discord.com/api/webhooks/1423586545562026005/...
+
+2. **Nenhuma outra configuração necessária!**
+
+## RECURSOS ADICIONADOS:
+
+✅ 1. Deduplicação inteligente (hash-based)
+✅ 2. Detecção e evasão de WAF
+✅ 3. Sistema checkpoint/resume (--resume)
+✅ 4. Rate limiting adaptativo (auto-ajuste em 429/503)
+✅ 5. Priorização de targets (scoring)
+✅ 6. Correlação de vulnerabilidades
+✅ 7. Filtragem de falsos positivos
+✅ 8. Scoring CVSS automático
+✅ 9. Notificações Discord (PRÉ-CONFIGURADO)
+✅ 10. Exports HackerOne/Bugcrowd
+✅ 11. Análise estatística
+✅ 12. Revalidação automática
+✅ 13. Gerenciamento de recursos
+✅ 14. Análise de screenshots (OCR se tesseract disponível)
+✅ 15. Integração CI/CD (JUnit XML, SARIF)
+
+## ARQUIVOS GERADOS:
+
+- correlation/chains.txt - Exploit chains
+- correlation/high_confidence.txt - Multi-tool confirmations
+- cvss_analysis/cvss_scores.json - CVSS scores
+- bugbounty_exports/hackerone_report.md
+- bugbounty_exports/bugcrowd_report.json
+- reports/statistics.json - Análise estatística
+- reports/junit-results.xml - Para CI/CD
+- reports/results.sarif - Para GitHub Security
+- revalidation/confirmed.txt - Findings revalidados
+- screenshot_analysis/findings.txt - Análise de screenshots
+
+## USO:
+
+```bash
+# Modo normal
+./enterprise-recon-scanner-full.sh --confirm --profile=balanced scope.txt
+
+# Com resume (continuar de onde parou)
+./enterprise-recon-scanner-full.sh --resume --confirm --profile=aggressive scope.txt
+
+# Export tudo
+./enterprise-recon-scanner-full.sh --confirm --export-json --profile=balanced scope.txt
+```
+
+TUDO CONFIGURADO E PRONTO PARA USO! 🚀
