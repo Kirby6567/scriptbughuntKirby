@@ -897,13 +897,27 @@ live_host_detection() {
             HTTPX_FLAGS=""
         fi
         
+        # Cloudflare bypass headers
+        local CF_BYPASS_HEADERS="-H 'X-Forwarded-For: 127.0.0.1' -H 'X-Originating-IP: 127.0.0.1' -H 'X-Remote-IP: 127.0.0.1' -H 'CF-Connecting-IP: 127.0.0.1' -H 'True-Client-IP: 127.0.0.1'"
+        
         httpx -l subs/all_subs.txt -silent -threads "$CONCURRENCY" $HTTPX_FLAGS \
               -tech-detect -status-code -title -ip \
+              -H "X-Forwarded-For: 127.0.0.1" \
+              -H "X-Originating-IP: 127.0.0.1" \
+              -H "X-Remote-IP: 127.0.0.1" \
+              -H "CF-Connecting-IP: 127.0.0.1" \
+              -H "True-Client-IP: 127.0.0.1" \
               -o alive/httpx_results.txt 2>/dev/null || true
         
-        # Saída JSON também
+        # Saída JSON também com bypass headers
         httpx -l subs/all_subs.txt -silent -json -threads "$CONCURRENCY" $HTTPX_FLAGS \
-              -tech-detect -o alive/httpx.json 2>/dev/null || true
+              -tech-detect \
+              -H "X-Forwarded-For: 127.0.0.1" \
+              -H "X-Originating-IP: 127.0.0.1" \
+              -H "X-Remote-IP: 127.0.0.1" \
+              -H "CF-Connecting-IP: 127.0.0.1" \
+              -H "True-Client-IP: 127.0.0.1" \
+              -o alive/httpx.json 2>/dev/null || true
         
         # Processar resultados
         if [[ -s alive/httpx_results.txt ]]; then
@@ -1220,15 +1234,22 @@ port_scanning() {
             -retries 3 \
             -warm-up-time 0 \
             -timeout 3000 \
-            -host-discovery \
             -verify \
             -no-color \
             -stats \
-            -nmap \
-            -nmap-cli "nmap -sV -sC -O --version-intensity 9 --script vuln,exploit,intrusive" \
             -exclude-cdn \
             -silent \
-            -o ports/naabu_raw.txt 2>/dev/null || true
+            -o ports/naabu_raw.txt 2>logs/naabu_errors.log || true
+        
+        # Se naabu não retornou nada, fazer scan básico sem flags problemáticas
+        if [[ ! -s ports/naabu_raw.txt ]]; then
+            log_info "⚠️ Tentando naabu com configuração simplificada..."
+            timeout "$TIMEOUT_PER_HOST" naabu -list alive/hosts_only.txt \
+                "${PORT_ARG[@]}" \
+                -c "$CONCURRENCY" \
+                -silent \
+                -o ports/naabu_raw.txt 2>>logs/naabu_errors.log || true
+        fi
             
         if [[ -s ports/naabu_raw.txt ]]; then
             sort -u ports/naabu_raw.txt > ports/naabu.txt || true
@@ -1542,7 +1563,6 @@ nuclei_scanning() {
             -as \
             -headless \
             -stats -v \
-            -interactsh \
             -passive \
             -rl "$RATE_LIMIT" -c "$CONCURRENCY" -timeout "$TEMPLATE_TIMEOUT" \
             -o nuclei/nuclei_hosts_fast.txt 2>logs/nuclei_fast_errors.log || true
@@ -1554,7 +1574,6 @@ nuclei_scanning() {
             -as \
             -headless \
             -stats -v \
-            -interactsh \
             -passive \
             -rl "$RATE_LIMIT" -c "$CONCURRENCY" -timeout "$TEMPLATE_TIMEOUT" \
             -o nuclei/nuclei_urls_fast.txt 2>logs/nuclei_fast_urls_errors.log || true
@@ -1657,9 +1676,9 @@ xss_testing() {
             --method GET,POST \
             --waf-evasion \
             --custom-payload "$CUSTOM_PAYLOADS_FILE" \
-            --custom-header "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36 dalfox-scan" \
-            --custom-header "X-Forwarded-For: 127.0.0.1" \
-            --custom-header "X-Originating-IP: 127.0.0.1" \
+            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36 dalfox-scan" \
+            -H "X-Forwarded-For: 127.0.0.1" \
+            -H "X-Originating-IP: 127.0.0.1" \
             --tamper "html-escape,url-double-encode,space2comment,randomcase,base64,entity" \
             --only-poc \
             --format json \
