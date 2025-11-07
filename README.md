@@ -897,15 +897,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👤 Author
 
-**Desenvolvido por**: [Seu Nome]
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Seu Perfil](https://linkedin.com/in/yourprofile)
-- Twitter: [@yourhandle](https://twitter.com/yourhandle)
-
+**Desenvolvido por**: Kirby656
+- GitHub: https://github.com/Kirby6567
+- LinkedIn: https://www.linkedin.com/in/cristhian-lucinger-b423b7346/
 ### Contributors
 
 Special thanks to all contributors who have helped improve this project!
 
+- Breno Merighe
 ---
 
 ## 🙏 Acknowledgements
