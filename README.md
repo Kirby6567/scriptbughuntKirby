@@ -1,25 +1,35 @@
-# 🔐 Enterprise Bug Bounty Scanner Framework
+# 🎯 Enterprise Bug Bounty Scanner Framework
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/yourusername/bug-bounty-scanner)
-[![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)](https://www.linux.org/)
+<div align="center">
 
-> **Automated reconnaissance and vulnerability scanning pipeline for bug bounty hunters and security professionals**
+![Version](https://img.shields.io/badge/version-3.0-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Platform](https://img.shields.io/badge/platform-Kali%20Linux-purple.svg)
+![Status](https://img.shields.io/badge/status-Production-success.svg)
 
-[Features](#-features) • [Installation](#-installation) • [Documentation](#-documentation) • [Usage Examples](#-usage-examples) • [Architecture](#-architecture)
+**Enterprise-grade automated reconnaissance and vulnerability scanning pipeline for Bug Bounty programs**
+
+[Features](#-key-features) •
+[Installation](#-installation) •
+[Documentation](#-documentation) •
+[Examples](#-usage-examples) •
+[Architecture](#-system-architecture)
+
+</div>
 
 ---
 
 ## 📋 Table of Contents
 
-- [Features](#-features)
+- [Overview](#-overview)
+- [Key Features](#-key-features)
 - [System Architecture](#-system-architecture)
 - [Installation](#-installation)
-- [Quick Start](#-quick-start)
+- [Quick Start Guide](#-quick-start-guide)
 - [Execution Profiles](#-execution-profiles)
 - [Scanner Phases](#-scanner-phases)
 - [Integrated Tools](#-integrated-tools)
-- [Outputs & Reports](#-outputs--reports)
+- [Outputs and Reports](#-outputs-and-reports)
 - [Best Practices](#-best-practices)
 - [Troubleshooting](#-troubleshooting)
 - [Roadmap](#-roadmap)
@@ -28,9 +38,7 @@
 
 ---
 
-## 🚀 Features
-
-### Visão Geral
+## 🎯 Overview
 
 A comprehensive bug bounty automation framework that combines 50+ industry-standard security tools into a unified pipeline. Designed for scalability, efficiency, and professional-grade reconnaissance.
 
