@@ -730,30 +730,30 @@ Allows remote code execution...
 
 ## ✅ Best Practices
 
-### Segurança e Ética
+### Security and Ethics
 
-1. ✅ **Sempre obtenha autorização por escrito** antes de executar scans
-2. ✅ **Respeite o scope** definido no programa de bug bounty
-3. ✅ **Configure rate limiting** apropriado para não sobrecarregar alvos
-4. ✅ **Não execute em produção** sem permissão explícita
-5. ✅ **Valide manualmente** todas as vulnerabilidades antes de reportar
-6. ✅ **Reporte responsavelmente** seguindo as diretrizes do programa
+1. ✅ **Always obtain written authorization** before executing scans
+2. ✅ **Respect the scope** defined in the bug bounty program
+3. ✅ **Configure appropriate rate limiting** to avoid overwhelming targets
+4. ✅ **Do not execute on production** without explicit permission
+5. ✅ **Manually validate** all vulnerabilities before reporting
+6. ✅ **Report responsibly** following the program's guidelines
 
 ### Performance
 
-1. 🚀 **Use perfil adequado** ao seu ambiente (Light para casa, Balanced para VPS)
-2. 🚀 **Execute em VPS** para melhor performance e para não expor seu IP
-3. 🚀 **Use tmpfs** para operações intensivas de I/O
-4. 🚀 **Configure ulimit** adequadamente (`ulimit -n 65535`)
-5. 🚀 **Monitore recursos** com htop/nmon durante execução
+1. 🚀 **Use appropriate profile** for your environment (Light for home, Balanced for VPS)
+2. 🚀 **Execute on VPS** for better performance and to avoid exposing your IP
+3. 🚀 **Use tmpfs** for intensive I/O operations
+4. 🚀 **Configure ulimit** appropriately (`ulimit -n 65535`)
+5. 🚀 **Monitor resources** with htop/nmon during execution
 
-### Análise de Resultados
+### Results Analysis
 
-1. 🔍 **Priorize vulnerabilidades** por CVSS score e impacto
-2. 🔍 **Valide manualmente** antes de reportar (evite falsos positivos)
-3. 🔍 **Documente com screenshots** e provas de conceito
-4. 🔍 **Agrupe vulnerabilidades** similares para relatórios mais limpos
-5. 🔍 **Revise o dashboard HTML** para visão geral rápida
+1. 🔍 **Prioritize vulnerabilities** by CVSS score and impact
+2. 🔍 **Manually validate** before reporting (avoid false positives)
+3. 🔍 **Document with screenshots** and proof of concept
+4. 🔍 **Group similar vulnerabilities** for cleaner reports
+5. 🔍 **Review HTML dashboard** for quick overview
 
 ---
 
