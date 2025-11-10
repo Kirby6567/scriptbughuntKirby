@@ -48,9 +48,9 @@ A comprehensive bug bounty automation framework that combines 50+ industry-stand
 - 🔔 **Real-time Notifications**: Discord and Telegram integration
 - 📊 **Professional Reports**: HTML dashboard, JSON, Markdown, and platform-specific exports
 
-### Características Principais
+### Main Features
 
-#### 🌐 **Descoberta e Reconhecimento**
+#### 🌐 **Discovery and Reconnaissance**
 
 - **Subdomain Enumeration** (33+ sources)
   - Subfinder, Amass, Assetfinder, Findomain, Chaos
@@ -70,7 +70,7 @@ A comprehensive bug bounty automation framework that combines 50+ industry-stand
   - Naabu targeted scanning
   - Nmap service/vulnerability detection
 
-#### 🛡️ **Técnicas Anti-Bloqueio**
+#### 🛡️ **Block Evasion Techniques**
 
 - **Cloudflare Bypass**
   - DNS history mining (CloudFlair)
