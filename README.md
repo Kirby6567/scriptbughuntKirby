@@ -759,70 +759,70 @@ Allows remote code execution...
 
 ## 🔧 Troubleshooting
 
-### Problemas Comuns
+### Common Problems
 
-#### 1. "Command not found" para ferramentas
+#### 1. "Command not found" for tools
 
-**Causa**: Ferramenta não instalada ou não no PATH
+**Cause**: Tool not installed or not in PATH
 
-**Solução**:
+**Solution**:
 ```bash
-# Verificar se Go bin está no PATH
+# Check if Go bin is in PATH
 echo $PATH | grep -q "$HOME/go/bin" || echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
 
-# Recarregar PATH
+# Reload PATH
 source ~/.bashrc
 
-# Reinstalar ferramenta
+# Reinstall tool
 go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
 ```
 
-#### 2. Timeout excessivo durante scans
+#### 2. Excessive timeouts during scans
 
-**Causa**: Rate limit muito alto ou alvo com WAF
+**Cause**: Rate limit too high or target has a WAF
 
-**Solução**:
-- Reduza o perfil (use `--profile=light`)
-- Aumente timeouts: `TIMEOUT_PER_HOST="600s"`
-- Configure delays: `RATE_LIMIT=50`
+**Solution**:
+-Lower the profile (use --profile=light)
+-Increase timeouts: TIMEOUT_PER_HOST="600s"
+-Configure delays: RATE_LIMIT=50
 
-#### 3. Masscan retorna "permission denied"
+#### 3. Masscan returns "permission denied"
 
-**Causa**: Requer privilégios de root
+**Cause**: Requires root privileges
 
-**Solução**:
+**Solution**:
 ```bash
-# Opção 1: Executar com sudo
+# Option 1: Run with sudo
 sudo ./bugbounty-scanner-ULTIMATE-BRUTAL.sh
 
-# Opção 2: Configurar capabilities
+# Option 2: Set capabilities
 sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip $(which masscan)
 ```
 
-#### 4. Discord/Telegram notificações falhando
+#### 4. Discord/Telegram notifications failing
 
-**Causa**: Webhook/token incorreto ou rate limiting
+**Cause**: Incorrect webhook/token or rate limiting
 
-**Solução**:
+**Solution**:
 ```bash
-# Testar webhook manualmente
+# Test webhook manually
 curl -X POST $DISCORD_WEBHOOK \
-    -H "Content-Type: application/json" \
-    -d '{"content":"Test message"}'
+    -H "Content-Type: application/json" \
+    -d '{"content":"Test message"}'
 
-# Verificar rate limits em logs/notifications.log
+# Check rate limits in logs/notifications.log
 ```
 
-#### 5. Nuclei não encontra vulnerabilidades
+#### 5. Nuclei doesn't find vulnerabilities
 
-**Causa**: Templates desatualizados
+**Causa**: Outdated templates
 
-**Solução**:
+**Solution**:
 ```bash
-# Atualizar templates
+# Update templates
 nuclei -update-templates
 
-# Executar update automático no script
+# Run automatic update in the script
 nuclei -update-templates -silent
 ```
 
