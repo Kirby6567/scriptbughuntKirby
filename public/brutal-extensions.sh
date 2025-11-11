@@ -29,7 +29,7 @@ run_ffuf_param_fuzz() {
     [[ "$PROFILE" = "kamikaze" ]] && max_urls=100
     
     local count=0
-    head -n "$max_urls" urls/with_params.txt | while read -r url; do
+    head -n "$max_urls" urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
         count=$((count + 1))
         safe=$(echo "$url" | md5sum | cut -c1-10)
         log_info "[$count/$max_urls] FFUF Param Fuzzing: $url"
@@ -80,7 +80,7 @@ run_ffuf_dir_fuzz() {
     [[ "$PROFILE" = "kamikaze" ]] && max_hosts=50
     
     local count=0
-    head -n "$max_hosts" alive/hosts.txt | while read -r url; do
+    head -n "$max_hosts" alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
         count=$((count + 1))
         safe=$(echo "$url" | sed 's/[^a-zA-Z0-9]/_/g')
         log_info "[$count/$max_hosts] FFUF Directory: $url"
@@ -117,7 +117,7 @@ run_graphql_introspection() {
     
     # Se não encontrou, testar endpoints comuns
     if [[ ! -s reports/graphql/graphql_candidates.txt ]]; then
-        head -10 alive/hosts.txt | while read -r url; do
+        head -10 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             for path in /graphql /api/graphql /v1/graphql /gql /api/gql; do
                 echo "${url}${path}" >> reports/graphql/graphql_candidates.txt
             done
@@ -190,7 +190,7 @@ run_cors_testing() {
         "https://trusted-domain.evil.com"
     )
     
-    head -20 alive/hosts.txt | while read -r url; do
+    head -20 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
         safe=$(echo "$url" | sed 's/[^a-zA-Z0-9]/_/g')
         
         for origin in "${test_origins[@]}"; do
@@ -506,7 +506,7 @@ ARJUNPARAMS
     [[ "$PROFILE" = "kamikaze" ]] && max_urls=100
     
     local count=0
-    head -n "$max_urls" urls/with_params.txt | while read -r url; do
+    head -n "$max_urls" urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
         count=$((count + 1))
         safe=$(echo "$url" | md5sum | cut -c1-8)
         log_info "[$count/$max_urls] Arjun: $url"

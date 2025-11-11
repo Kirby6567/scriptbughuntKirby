@@ -185,6 +185,11 @@ send_telegram_progress() {
             percentage=$(( (current * 100) / total ))
             local filled=$(( percentage / 10 ))
             local empty=$(( 10 - filled ))
+        else
+            percentage=0
+            local filled=0
+            local empty=10
+        fi
             
             progress_bar="["
             for ((i=1; i<=filled; i++)); do progress_bar+="█"; done
@@ -477,7 +482,7 @@ Baixando $JS_FILES arquivos JavaScript..."
   current_js=0
   total_js=$(cat js/js_urls_raw.txt | head -50 | wc -l)
   
-  cat js/js_urls_raw.txt | head -50 | while read -r url; do
+  cat js/js_urls_raw.txt | head -50 | while IFS= read -r url || [[ -n "$url" ]]; do
     current_js=$((current_js + 1))
     
     # Atualizar progresso a cada 10 arquivos

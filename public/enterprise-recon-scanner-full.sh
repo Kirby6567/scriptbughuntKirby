@@ -1648,7 +1648,7 @@ run_xnlinkfinder() {
         log_info "▶️  Executando xnLinkFinder..."
         mkdir -p reports/xnlinkfinder
         
-        head -20 alive/hosts.txt | while read -r url; do
+        head -20 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | sed 's/[^a-zA-Z0-9._-]/_/g')
             timeout 60s xnLinkFinder -i "$url" -o reports/xnlinkfinder/links_${safe_name}.txt 2>/dev/null || true
         done
@@ -1690,7 +1690,7 @@ run_arjun() {
         log_info "▶️  Executando arjun..."
         mkdir -p reports/arjun
         
-        head -5 alive/hosts.txt | while read -r url; do
+        head -5 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | sed 's/[^a-zA-Z0-9._-]/_/g')
             timeout 300s arjun -u "$url" -oJ reports/arjun/params_${safe_name}.json -t "$PARALLEL_HOSTS" 2>/dev/null || true
         done
@@ -1770,7 +1770,7 @@ run_git_dumper() {
         log_info "▶️  Executando git-dumper..."
         mkdir -p reports/git_dumper
         
-        head -5 alive/hosts.txt | while read -r url; do
+        head -5 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | sed 's/[^a-zA-Z0-9._-]/_/g')
             git_url="${url}/.git/"
             
@@ -1796,7 +1796,7 @@ run_commix() {
         log_info "▶️  Executando commix para command injection..."
         mkdir -p reports/commix
         
-        head -5 urls/with_params.txt | while read -r url; do
+        head -5 urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
             timeout 180s commix --url="$url" --batch --output-dir="reports/commix" > reports/commix/commix_${safe_name}.txt 2>&1 || true
         done
@@ -1816,7 +1816,7 @@ run_lfisuite() {
         log_info "▶️  Executando lfisuite..."
         mkdir -p reports/lfisuite
         
-        head -10 urls/gf_lfi.txt | while read -r url; do
+        head -10 urls/gf_lfi.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
             timeout 120s lfisuite -u "$url" -o reports/lfisuite/lfi_${safe_name}.txt 2>/dev/null || true
         done
@@ -1852,7 +1852,7 @@ run_ssrfmap() {
         log_info "▶️  Executando ssrfmap..."
         mkdir -p reports/ssrfmap
         
-        head -10 urls/gf_ssrf.txt | while read -r url; do
+        head -10 urls/gf_ssrf.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
             timeout 180s ssrfmap -r "$url" -p payloads --output reports/ssrfmap/ssrf_${safe_name}.txt 2>/dev/null || true
         done

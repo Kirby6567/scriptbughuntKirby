@@ -1602,7 +1602,7 @@ advanced_parameter_discovery() {
   # 1. Arjun - Deep parameter discovery
   log_info "🔍 Arjun - Deep parameter mining (wordlist expandida)..."
   if command -v arjun &>/dev/null; then
-    cat alive/hosts.txt | head -n 50 | while read -r url; do
+    cat alive/hosts.txt | head -n 50 | while IFS= read -r url || [[ -n "$url" ]]; do
       safe=$(echo "$url" | md5sum | cut -d' ' -f1)
       timeout 300 arjun -u "$url" \
         --stable \
@@ -1685,7 +1685,7 @@ test_graphql_endpoints() {
   
   log_info "🔍 Testando introspection em $(wc -l < apis/graphql/potential_endpoints.txt) endpoints..."
   
-  head -n 20 apis/graphql/potential_endpoints.txt | while read -r url; do
+  head -n 20 apis/graphql/potential_endpoints.txt | while IFS= read -r url || [[ -n "$url" ]]; do
     safe=$(echo "$url" | md5sum | cut -d' ' -f1)
     
     # Introspection query
@@ -1823,7 +1823,7 @@ test_cors_advanced() {
     "https://attacker.com"
   )
   
-  head -n 50 alive/hosts.txt | while read -r url; do
+  head -n 50 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
     safe=$(echo "$url" | md5sum | cut -d' ' -f1)
     
     for origin in "${attack_origins[@]}"; do
@@ -2101,7 +2101,7 @@ xss_testing() {
         # --- ETAPA 3: Modo URL único BRUTAL ---
         log_info "[BRUTAL] Etapa 3: Teste individual de URLs críticas..."
         if [[ -s urls/with_params.txt ]]; then
-            head -10 urls/with_params.txt | while read -r url; do
+            head -10 urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
                 safe=$(echo "$url" | md5sum | cut -c1-8)
                 timeout 180s dalfox url "$url" \
                     -b "$BLIND_XSS_URL" \
@@ -2223,7 +2223,7 @@ BURPPYTHON
     log_info "⏰ Isso pode demorar - o Burp está fazendo scan ativo em background!"
     
     local count=0
-    head -n "$max_urls" urls/with_params.txt | while read -r url; do
+    head -n "$max_urls" urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
         count=$((count + 1))
         echo "[Burp $count/$max_urls] $url"
         
@@ -2553,7 +2553,7 @@ run_arjun() {
         log_info "▶️  Executando arjun..."
         mkdir -p reports/arjun
         
-        head -5 alive/hosts.txt | while read -r url; do
+        head -5 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | sed 's/[^a-zA-Z0-9._-]/_/g')
             timeout 300s arjun -u "$url" -oJ reports/arjun/params_${safe_name}.json -t "$PARALLEL_HOSTS" 2>/dev/null || true
         done
@@ -2633,7 +2633,7 @@ run_git_dumper() {
         log_info "▶️  Executando git-dumper..."
         mkdir -p reports/git_dumper
         
-        head -5 alive/hosts.txt | while read -r url; do
+        head -5 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | sed 's/[^a-zA-Z0-9._-]/_/g')
             git_url="${url}/.git/"
             
@@ -2659,7 +2659,7 @@ run_commix() {
         log_info "▶️  Executando commix para command injection..."
         mkdir -p reports/commix
         
-        head -5 urls/with_params.txt | while read -r url; do
+        head -5 urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
             timeout 180s commix --url="$url" --batch --output-dir="reports/commix" > reports/commix/commix_${safe_name}.txt 2>&1 || true
         done
@@ -2679,7 +2679,7 @@ run_lfisuite() {
         log_info "▶️  Executando lfisuite..."
         mkdir -p reports/lfisuite
         
-        head -10 urls/gf_lfi.txt | while read -r url; do
+        head -10 urls/gf_lfi.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
             timeout 120s lfisuite -u "$url" -o reports/lfisuite/lfi_${safe_name}.txt 2>/dev/null || true
         done
@@ -2715,7 +2715,7 @@ run_ssrfmap() {
         log_info "▶️  Executando ssrfmap..."
         mkdir -p reports/ssrfmap
         
-        head -10 urls/gf_ssrf.txt | while read -r url; do
+        head -10 urls/gf_ssrf.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
             timeout 180s ssrfmap -r "$url" -p payloads --output reports/ssrfmap/ssrf_${safe_name}.txt 2>/dev/null || true
         done
