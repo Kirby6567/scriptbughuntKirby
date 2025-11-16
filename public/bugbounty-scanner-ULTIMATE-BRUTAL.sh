@@ -1844,7 +1844,6 @@ nuclei_scanning() {
             -headless \
             -code \
             -follow-redirects \
-            -follow-host-redirects \
             -max-redirects 5 \
             -system-resolvers \
             -project \
@@ -1858,7 +1857,7 @@ nuclei_scanning() {
             log_warn "⚠️  Nuclei falhou, tentando com templates específicos..."
             # Fallback 1: Usar apenas CVE templates com flags otimizadas
             timeout 2h nuclei -l "$target_file" \
-                -t "$HOME/nuclei-templates/cves/" \
+                -tags cve \
                 -severity critical,high \
                 -stats \
                 -rl "$RATE_LIMIT" -c "$reduced_concurrency" -timeout "$TEMPLATE_TIMEOUT" \
@@ -1892,7 +1891,6 @@ nuclei_scanning() {
             -headless \
             -code \
             -follow-redirects \
-            -follow-host-redirects \
             -max-redirects 10 \
             -system-resolvers \
             -project \
@@ -1938,7 +1936,6 @@ nuclei_scanning() {
             -headless \
             -code \
             -follow-redirects \
-            -follow-host-redirects \
             -max-redirects 10 \
             -system-resolvers \
             -project \
@@ -1983,7 +1980,6 @@ nuclei_scanning() {
                 -headless \
                 -code \
                 -follow-redirects \
-                -follow-host-redirects \
                 -max-redirects 5 \
                 -system-resolvers \
                 -project \
@@ -2070,7 +2066,6 @@ nuclei_scanning() {
             -headless \
             -code \
             -follow-redirects \
-            -follow-host-redirects \
             -max-redirects 5 \
             -system-resolvers \
             -project \
