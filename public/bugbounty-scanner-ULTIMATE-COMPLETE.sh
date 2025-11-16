@@ -873,7 +873,6 @@ live_host_detection() {
             $HTTPX_RL_FLAG \
             -H "User-Agent: $RANDOM_UA" \
             -follow-redirects \
-            -follow-host-redirects \
             -status-code \
             -tech-detect \
             -title \
@@ -1288,7 +1287,6 @@ nuclei_scanning() {
         -passive \
         -headless \
         -follow-redirects \
-        -follow-host-redirects \
         -max-redirects 5 \
         -system-resolvers \
         -project \
@@ -1326,7 +1324,6 @@ nuclei_scanning() {
             -passive \
             -headless \
             -follow-redirects \
-            -follow-host-redirects \
             -max-redirects 5 \
             -system-resolvers \
             -project \
@@ -1363,7 +1360,6 @@ nuclei_scanning() {
         -passive \
         -headless \
         -follow-redirects \
-        -follow-host-redirects \
         -max-redirects 5 \
         -system-resolvers \
         -project \

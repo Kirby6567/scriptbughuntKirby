@@ -585,7 +585,6 @@ nuclei_scanning() {
         -headless \
         -code \
         -follow-redirects \
-        -follow-host-redirects \
         -max-redirects 5 \
         -system-resolvers \
         -project \
@@ -625,7 +624,6 @@ nuclei_scanning() {
             -headless \
             -code \
             -follow-redirects \
-            -follow-host-redirects \
             -max-redirects 5 \
             -system-resolvers \
             -project \
@@ -663,7 +661,6 @@ nuclei_scanning() {
         -headless \
         -code \
         -follow-redirects \
-        -follow-host-redirects \
         -max-redirects 5 \
         -system-resolvers \
         -project \
