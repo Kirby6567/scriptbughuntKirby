@@ -34,15 +34,18 @@ run_ffuf_param_fuzz() {
         safe=$(echo "$url" | md5sum | cut -c1-10)
         log_info "[$count/$max_urls] FFUF Param Fuzzing: $url"
         
-        # Testar parâmetros GET
-        timeout 300s ffuf -u "${url}&FUZZ=test" \
+        # Testar parâmetros GET com timeouts agressivos
+        timeout 180s ffuf -u "${url}&FUZZ=test" \
             -w "$param_wordlist" \
-            -mc 200,204,301,302,307,401,403,405,500 \
-            -t 100 \
-            -rate 500 \
-            -timeout 30 \
+            -mc 200,204,301,302,307,401,403 \
+            -fc 404 \
+            -t 50 \
+            -rate 100 \
+            -p 0.1-0.5 \
+            -timeout 10 \
+            -maxtime 120 \
             -ac \
-            -v \
+            -se \
             -o "reports/ffuf/params_${safe}.json" \
             2>>logs/ffuf_errors.log || true
     done
@@ -85,16 +88,19 @@ run_ffuf_dir_fuzz() {
         safe=$(echo "$url" | sed 's/[^a-zA-Z0-9]/_/g')
         log_info "[$count/$max_hosts] FFUF Directory: $url"
         
-        timeout 600s ffuf -u "${url}/FUZZ" \
+        timeout 300s ffuf -u "${url}/FUZZ" \
             -w "$wordlist" \
-            -mc 200,204,301,302,307,401,403,405,500 \
-            -t 100 \
-            -rate 500 \
-            -timeout 30 \
+            -mc 200,204,301,302,307,401,403 \
+            -fc 404 \
+            -t 50 \
+            -rate 100 \
+            -p 0.2-0.8 \
+            -timeout 10 \
+            -maxtime 240 \
             -recursion \
-            -recursion-depth 2 \
+            -recursion-depth 1 \
             -ac \
-            -v \
+            -se \
             -o "reports/ffuf/directories/dir_${safe}.json" \
             2>>logs/ffuf_dir_errors.log || true
     done
