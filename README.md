@@ -193,7 +193,7 @@ A comprehensive bug bounty automation framework that combines 50+ industry-stand
   - gowitness, aquatone, eyewitness
   - Visual vulnerability documentation
 
-#### 🔗 **Integração e Notificações**
+#### 🔗 **Integration and Notifications**
 
 - **Discord Integration**
   - Real-time progress updates
@@ -206,7 +206,7 @@ A comprehensive bug bounty automation framework that combines 50+ industry-stand
   - Status updates and errors
   - File attachments for reports
 
-#### 📤 **Exports Profissionais**
+#### 📤 **Professional Exports**
 
 - **HackerOne Format**
   - Markdown structured reports
@@ -272,7 +272,7 @@ graph TB
     I --> I4[Markdown]
 ```
 
-### Estrutura de Diretórios Gerada
+### Generated Directory Structure
 
 ```
 bug-bounty-scanner/
@@ -313,7 +313,7 @@ bug-bounty-scanner/
 
 ## 📦 Installation
 
-### Pré-requisitos
+### Prerequisites
 
 - **Operating System**: Linux (Ubuntu 20.04+, Debian 10+, Kali Linux)
 - **Hardware**: 
@@ -324,26 +324,26 @@ bug-bounty-scanner/
   - Python 3.8+
   - jq, curl, git
 
-### Instalação Rápida
+### Quick Installation
 
 ```bash
-# Clone o repositório
+# Clone the repository
 git clone https://github.com/yourusername/bug-bounty-scanner.git
 cd bug-bounty-scanner
 
-# Execute o instalador automático
+# Run the automatic installer
 chmod +x install.sh
 ./install.sh
 
-# Ou instalação manual das ferramentas principais
+# Or manual installation of main tools
 chmod +x scripts/install-tools.sh
 ./scripts/install-tools.sh
 ```
 
-### Instalação Manual
+### Manual Installation
 
 <details>
-<summary>Clique para expandir instruções detalhadas</summary>
+<summary>Click to expand detailed instructions</summary>
 
 #### Go Tools
 ```bash
@@ -392,22 +392,22 @@ go install github.com/sensepost/gowitness@latest
 
 </details>
 
-### Configuração Inicial
+### Initial Configuration
 
 ```bash
-# Configurar variáveis de ambiente para notificações
+# Configure environment variables for notifications
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/YOUR_WEBHOOK"
 export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
 export TELEGRAM_CHAT_ID="YOUR_CHAT_ID"
 
-# Configurar API keys (opcional mas recomendado)
+# Configure API keys (optional but recommended)
 export SHODAN_API_KEY="your_key"
 export CENSYS_API_ID="your_id"
 export CENSYS_API_SECRET="your_secret"
 export GITHUB_TOKEN="your_token"
 export VIRUSTOTAL_API_KEY="your_key"
 
-# Atualizar templates do Nuclei
+# Update Nuclei templates
 nuclei -update-templates
 ```
 
@@ -415,37 +415,37 @@ nuclei -update-templates
 
 ## 🎯 Quick Start
 
-### Sintaxe Básica
+### Basic Syntax
 
 ```bash
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh [OPTIONS] <scope_file>
 ```
 
-### Opções Disponíveis
+### Available Options
 
-| Opção | Descrição | Valores |
-|-------|-----------|---------|
-| `--profile` | Perfil de execução | light, balanced, aggressive, kamikaze |
-| `--dry-run` | Simular execução sem rodar | - |
-| `--confirm` | Pular confirmação interativa | - |
-| `--export-hackerone` | Gerar relatório HackerOne | - |
-| `--export-bugcrowd` | Gerar relatório Bugcrowd | - |
-| `--export-json` | Gerar export JSON | - |
-| `--export-html` | Gerar dashboard HTML | - |
+| Option | Description | Values |
+|--------|-------------|--------|
+| `--profile` | Execution profile | light, balanced, aggressive, kamikaze |
+| `--dry-run` | Simulate execution without running | - |
+| `--confirm` | Skip interactive confirmation | - |
+| `--export-hackerone` | Generate HackerOne report | - |
+| `--export-bugcrowd` | Generate Bugcrowd report | - |
+| `--export-json` | Generate JSON export | - |
+| `--export-html` | Generate HTML dashboard | - |
 
-### Exemplos de Uso
+### Usage Examples
 
-#### 1. Dry-run para validar scope
+#### 1. Dry-run to validate scope
 ```bash
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh --dry-run scope.txt
 ```
 
-#### 2. Scan completo com perfil balanceado
+#### 2. Complete scan with balanced profile
 ```bash
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh --profile=balanced --confirm scope.txt
 ```
 
-#### 3. Scan agressivo com export para HackerOne
+#### 3. Aggressive scan with HackerOne export
 ```bash
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh \
     --profile=aggressive \
@@ -455,17 +455,17 @@ nuclei -update-templates
     scope.txt
 ```
 
-#### 4. Scan leve para testes domésticos
+#### 4. Light scan for home testing
 ```bash
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh --profile=light scope.txt
 ```
 
-#### 5. Modo Kamikaze (VPS dedicado recomendado)
+#### 5. Kamikaze mode (dedicated VPS recommended)
 ```bash
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh --profile=kamikaze --confirm scope.txt
 ```
 
-### Formato do Scope File
+### Scope File Format
 
 ```
 example.com
@@ -479,9 +479,9 @@ http://192.168.1.1
 
 ## ⚙️ Execution Profiles
 
-### Light (Uso Doméstico)
+### Light (Home Use)
 
-**Recomendado para**: Testes em casa, conexões residenciais
+**Recommended for**: Home testing, residential connections
 
 ```
 Concurrency: 50
@@ -492,9 +492,9 @@ Masscan: 300 pps
 Naabu: Top 1000 ports
 ```
 
-### Balanced (Recomendado)
+### Balanced (Recommended)
 
-**Recomendado para**: VPS básico, a maioria dos casos
+**Recommended for**: Basic VPS, most use cases
 
 ```
 Concurrency: 100
@@ -505,9 +505,9 @@ Masscan: 800 pps
 Naabu: Top 5000 ports
 ```
 
-### Aggressive (VPS Potente)
+### Aggressive (Powerful VPS)
 
-**Recomendado para**: Servidores dedicados, scans rápidos
+**Recommended for**: Dedicated servers, fast scans
 
 ```
 Concurrency: 150
@@ -519,9 +519,9 @@ Naabu: Top 10000 ports
 SQLMap: Level 5, Risk 3
 ```
 
-### Kamikaze (⚠️ EXTREMO CUIDADO)
+### Kamikaze (⚠️ EXTREME CAUTION)
 
-**Recomendado para**: VPS dedicado, máxima velocidade
+**Recommended for**: Dedicated VPS, maximum speed
 
 ```
 Concurrency: 250
@@ -535,11 +535,11 @@ Max Crawl Depth: 12
 JS Files: 1500
 ```
 
-**⚠️ AVISOS:**
-- Use apenas em VPS dedicado com autorização
-- Pode ser detectado como DoS
-- Bandwidth intensivo (10k+ req/s)
-- Requer `ulimit -n 65535`
+**⚠️ WARNINGS:**
+- Use only on dedicated VPS with authorization
+- May be detected as DoS attack
+- Bandwidth intensive (10k+ req/s)
+- Requires `ulimit -n 65535`
 
 ---
 
@@ -635,19 +635,19 @@ JS Files: 1500
 
 ## 📊 Outputs & Reports
 
-### Relatório HTML Dashboard
+### HTML Dashboard Report
 
-Recurso completo incluindo:
+Complete resource including:
 
-- **Executive Summary**: Estatísticas gerais, timeline, criticidade
-- **Vulnerability Overview**: Gráficos por tipo, severidade, CVSS
-- **Detailed Findings**: Lista completa com PoC
-- **Asset Inventory**: Subdomínios, hosts, portas, tecnologias
-- **Recommendations**: Priorização de correções
+- **Executive Summary**: General statistics, timeline, criticality
+- **Vulnerability Overview**: Charts by type, severity, CVSS
+- **Detailed Findings**: Complete list with PoC
+- **Asset Inventory**: Subdomains, hosts, ports, technologies
+- **Recommendations**: Prioritized remediation
 
-**Localização**: `reports/[timestamp]_[target]_report.html`
+**Location**: `reports/[timestamp]_[target]_report.html`
 
-### Exports para Plataformas
+### Platform Exports
 
 #### HackerOne Format
 ```markdown
@@ -782,9 +782,9 @@ go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
 **Cause**: Rate limit too high or target has a WAF
 
 **Solution**:
--Lower the profile (use --profile=light)
--Increase timeouts: TIMEOUT_PER_HOST="600s"
--Configure delays: RATE_LIMIT=50
+- Lower the profile (use --profile=light)
+- Increase timeouts: TIMEOUT_PER_HOST="600s"
+- Configure delays: RATE_LIMIT=50
 
 #### 3. Masscan returns "permission denied"
 
@@ -807,15 +807,15 @@ sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip $(which masscan)
 ```bash
 # Test webhook manually
 curl -X POST $DISCORD_WEBHOOK \
-    -H "Content-Type: application/json" \
-    -d '{"content":"Test message"}'
+    -H "Content-Type: application/json" \
+    -d '{"content":"Test message"}'
 
 # Check rate limits in logs/notifications.log
 ```
 
 #### 5. Nuclei doesn't find vulnerabilities
 
-**Causa**: Outdated templates
+**Cause**: Outdated templates
 
 **Solution**:
 ```bash
@@ -829,11 +829,11 @@ nuclei -update-templates -silent
 ### Debug Logs
 
 ```bash
-# Ativar modo debug
+# Enable debug mode
 export DEBUG=true
 ./bugbounty-scanner-ULTIMATE-BRUTAL.sh --profile=balanced scope.txt
 
-# Logs detalhados em:
+# Detailed logs at:
 tail -f logs/scanner.log
 tail -f logs/errors.log
 ```
@@ -905,14 +905,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👤 Author
 
-**Desenvolvido por**: Kirby656
+**Developed by**: Kirby656
 - GitHub: https://github.com/Kirby6567
 - LinkedIn: https://www.linkedin.com/in/cristhian-lucinger-b423b7346/
+
 ### Contributors
 
 Special thanks to all contributors who have helped improve this project!
 
 - Breno Merighe
+
 ---
 
 ## 🙏 Acknowledgements
