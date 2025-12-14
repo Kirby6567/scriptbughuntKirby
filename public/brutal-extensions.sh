@@ -5,57 +5,88 @@
 # ============= FFUF PARAMETER FUZZING BRUTAL =============
 run_ffuf_param_fuzz() {
     if [[ ! -s urls/with_params.txt ]]; then
-        log_info "⚠️  Nenhuma URL parametrizada - pulando ffuf param fuzzing"
+        log_info "⚠️  No parameterized URLs - skipping ffuf param fuzzing"
         return 0
     fi
     
     if ! command -v ffuf >/dev/null 2>&1; then
-        log_info "⚠️  ffuf não instalado"
-        log_info "💡 Instale com: go install github.com/ffuf/ffuf/v2@latest"
+        log_info "⚠️  ffuf not installed"
+        log_info "💡 Install with: go install github.com/ffuf/ffuf/v2@latest"
         return 0
     fi
     
-    log_info "🔥 Executando FFUF Parameter Fuzzing BRUTAL..."
+    log_info "🔥 Running FFUF Parameter Fuzzing BRUTAL..."
     mkdir -p reports/ffuf logs
     
-    # Wordlist gigante de parâmetros
+    # Large parameter wordlist
     local param_wordlist="/usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt"
     if [[ ! -f "$param_wordlist" ]]; then
         param_wordlist="/usr/share/wordlists/dirb/common.txt"
     fi
+    
+    # Timeout settings (30 minutes global, 15s per request)
+    local shell_timeout=1860      # Shell timeout (31 min - slightly more than maxtime)
+    local ffuf_maxtime=1800       # FFUF internal maxtime (30 minutes)
+    local req_timeout=15          # Per-request timeout (15 seconds)
     
     local max_urls=20
     [[ "$PROFILE" = "aggressive" ]] && max_urls=50
     [[ "$PROFILE" = "kamikaze" ]] && max_urls=100
     
     local count=0
+    local total_urls=$(head -n "$max_urls" urls/with_params.txt | wc -l)
+    
     head -n "$max_urls" urls/with_params.txt | while IFS= read -r url || [[ -n "$url" ]]; do
+        # Skip empty lines
+        [[ -z "$url" ]] && continue
+        
         count=$((count + 1))
         safe=$(echo "$url" | md5sum | cut -c1-10)
-        log_info "[$count/$max_urls] FFUF Param Fuzzing: $url"
+        log_info "[$count/$total_urls] FFUF Param Fuzzing: $url"
         
-        # Testar parâmetros GET com timeouts agressivos
-        timeout 180s ffuf -u "${url}&FUZZ=test" \
+        # Run ffuf with shell timeout wrapper + internal timeouts
+        # If ffuf hangs or times out, log error and continue to next URL
+        if ! timeout "${shell_timeout}s" ffuf -u "${url}&FUZZ=test" \
             -w "$param_wordlist" \
             -mc 200,204,301,302,307,401,403 \
             -fc 404 \
             -t 50 \
             -rate 100 \
             -p 0.1-0.5 \
-            -timeout 10 \
-            -maxtime 120 \
+            -timeout "$req_timeout" \
+            -maxtime "$ffuf_maxtime" \
             -ac \
             -se \
             -o "reports/ffuf/params_${safe}.json" \
-            2>>logs/ffuf_errors.log || true
+            2>>logs/ffuf_errors.log
+        then
+            local exit_code=$?
+            if [[ $exit_code -eq 124 ]]; then
+                log_error "[!] FFUF TIMEOUT (30min) for URL: $url - Skipping to next target"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $url (exceeded ${ffuf_maxtime}s)" >> logs/ffuf_timeouts.log
+            else
+                log_error "[!] FFUF failed for URL: $url (exit code: $exit_code) - Skipping to next target"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $url (exit code: $exit_code)" >> logs/ffuf_errors.log
+            fi
+            # Continue to next URL without stopping the script
+            continue
+        fi
+        
+        log_info "[OK] FFUF completed for: $url"
     done
     
-    # Consolidar parâmetros encontrados
+    # Consolidate discovered parameters
     if ls reports/ffuf/params_*.json >/dev/null 2>&1; then
         jq -r '.results[] | .input.FUZZ' reports/ffuf/params_*.json 2>/dev/null | \
             sort -u > reports/ffuf/all_hidden_params.txt || true
         local param_count=$(wc -l < reports/ffuf/all_hidden_params.txt 2>/dev/null || echo 0)
-        log_success "✅ FFUF encontrou $param_count parâmetros ocultos"
+        log_success "✅ FFUF found $param_count hidden parameters"
+    fi
+    
+    # Report any timeouts
+    if [[ -s logs/ffuf_timeouts.log ]]; then
+        local timeout_count=$(wc -l < logs/ffuf_timeouts.log)
+        log_warn "⚠️  $timeout_count URLs timed out during param fuzzing (see logs/ffuf_timeouts.log)"
     fi
 }
 
