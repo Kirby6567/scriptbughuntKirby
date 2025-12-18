@@ -3206,15 +3206,16 @@ run_graphql_introspection() {
             log_info "[$count/$total_endpoints] Testing GraphQL: $endpoint"
             
             # Test introspection with timeout and error handling
-            if ! timeout "${req_timeout}s" curl -X POST "$endpoint" \
+            timeout "${req_timeout}s" curl -X POST "$endpoint" \
                 -H "Content-Type: application/json" \
                 -H "User-Agent: Mozilla/5.0" \
                 -d "$introspection_query" \
                 --connect-timeout 10 \
                 --max-time "$req_timeout" \
                 -s -o "reports/graphql/introspection_${safe}.json" 2>/dev/null
-            then
-                local exit_code=$?
+
+            local exit_code=$?
+            if [[ $exit_code -ne 0 ]]; then
                 if [[ $exit_code -eq 124 ]]; then
                     log_warn "[!] GraphQL TIMEOUT (${req_timeout}s) for: $endpoint - Skipping"
                     echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $endpoint" >> logs/graphql_timeouts.log
@@ -3222,7 +3223,7 @@ run_graphql_introspection() {
                     log_warn "[!] GraphQL request failed for: $endpoint (exit: $exit_code) - Skipping"
                     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $endpoint (exit: $exit_code)" >> logs/graphql_errors.log
                 fi
-                # Continue to next endpoint instead of hanging
+                # Force next loop iteration (do not wait)
                 continue
             fi
             
