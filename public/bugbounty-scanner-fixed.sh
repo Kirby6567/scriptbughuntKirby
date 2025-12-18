@@ -3041,10 +3041,10 @@ run_ffuf_param_fuzz() {
         param_wordlist="/usr/share/wordlists/dirb/common.txt"
     fi
     
-    # Timeout settings (30 minutes global, 15s per request)
-    local shell_timeout=1860      # Shell timeout (31 min - slightly more than maxtime)
-    local ffuf_maxtime=1800       # FFUF internal maxtime (30 minutes)
-    local req_timeout=15          # Per-request timeout (15 seconds)
+    # Timeout settings (10 minutes global for this module, 10s per request)
+    local shell_timeout=660       # Shell timeout (11 min - slightly more than maxtime)
+    local ffuf_maxtime=600        # FFUF internal maxtime (10 minutes)
+    local req_timeout=10          # Per-request timeout (10 seconds)
     
     local max_urls=20
     [[ "$PROFILE" = "aggressive" ]] && max_urls=50
@@ -3063,7 +3063,7 @@ run_ffuf_param_fuzz() {
         
         # Run ffuf with shell timeout wrapper + internal timeouts
         # If ffuf hangs or times out, log error and continue to next URL
-        if ! timeout "${shell_timeout}s" ffuf -u "${url}&FUZZ=test" \
+        timeout "${shell_timeout}s" ffuf -u "${url}&FUZZ=test" \
             -w "$param_wordlist" \
             -mc 200,204,301,302,307,401,403 \
             -fc 404 \
@@ -3076,16 +3076,17 @@ run_ffuf_param_fuzz() {
             -se \
             -o "reports/ffuf/params_${safe}.json" \
             2>>logs/ffuf_errors.log
-        then
-            local exit_code=$?
-            if [[ $exit_code -eq 124 ]]; then
-                log_error "[!] FFUF TIMEOUT (30min) for URL: $url - Skipping to next target"
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $url (exceeded ${ffuf_maxtime}s)" >> logs/ffuf_timeouts.log
+        
+        local exit_code=$?
+        if [[ $exit_code -ne 0 ]]; then
+            # 124 = GNU timeout, 137 = killed
+            if [[ $exit_code -eq 124 || $exit_code -eq 137 ]]; then
+                log_error "[!] FFUF TIMEOUT for URL: $url - Skipping to next target"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $url (limit ${ffuf_maxtime}s, req-timeout ${req_timeout}s)" >> logs/ffuf_timeouts.log
             else
                 log_error "[!] FFUF failed for URL: $url (exit code: $exit_code) - Skipping to next target"
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $url (exit code: $exit_code)" >> logs/ffuf_errors.log
             fi
-            # Continue to next URL without stopping the script
             continue
         fi
         
