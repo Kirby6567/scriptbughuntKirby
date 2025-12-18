@@ -1782,10 +1782,10 @@ check_subdomain_takeover() {
       -v 2>/dev/null || true
   fi
   
-  # 2. Nuclei takeover templates
+  # 2. Nuclei takeover templates (usando tags - sintaxe moderna)
   if command -v nuclei &>/dev/null; then
     timeout 600 nuclei -l subs/all_subs.txt \
-      -t ~/nuclei-templates/takeovers/ \
+      -tags takeover \
       -c $(($CONCURRENCY / 2)) \
       -rl $(($RATE_LIMIT / 2)) \
       -o reports/takeover/nuclei_takeover.txt \
@@ -1879,13 +1879,12 @@ test_ssrf_advanced() {
   
   log_info "📡 Testing SSRF with advanced patterns..."
   
-  # Nuclei SSRF templates
+  # Nuclei SSRF templates (usando tags - sintaxe moderna)
   if command -v nuclei &>/dev/null; then
     head -n 100 urls/with_params.txt | timeout 600 nuclei \
-      -t ~/nuclei-templates/vulnerabilities/ssrf/ \
+      -tags ssrf \
       -c $(($CONCURRENCY / 2)) \
       -rl $(($RATE_LIMIT / 2)) \
-      -max-host-error 10 \
       -o reports/ssrf/nuclei_ssrf.txt \
       -silent 2>/dev/null || true
   fi

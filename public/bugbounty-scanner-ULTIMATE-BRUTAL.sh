@@ -1782,36 +1782,42 @@ nuclei_scanning() {
         return
     fi
 
-    # Atualizar templates do nuclei primeiro
-    log_info "📦 Atualizando templates do Nuclei..."
-    nuclei -ut -silent >/dev/null 2>&1 || true
+    # CORREÇÃO: Verificar se templates estão disponíveis (sem hardcoded paths)
+    log_info "🔍 Verificando templates do Nuclei..."
+    local templates_ready=false
     
-    # CORREÇÃO: Verificar se templates estão disponíveis
-    log_info "🔍 Verificando templates disponíveis..."
-    local templates_dir="$HOME/nuclei-templates"
-    if [[ ! -d "$templates_dir" ]] || [[ ! "$(ls -A "$templates_dir" 2>/dev/null)" ]]; then
-        log_warn "⚠️  Templates não encontrados em $templates_dir"
-        log_info "🔄 Baixando templates do nuclei..."
-        nuclei -update-templates -silent >/dev/null 2>&1 || {
-            log_error "❌ Falha ao baixar templates - usando modo fallback"
-            templates_dir=""
-        }
-    fi
-    
-    # Verificar se DAST templates estão disponíveis
-    local has_dast=false
-    # Testar se o nuclei suporta a flag -dast
-    if nuclei -help 2>&1 | grep -q "\-dast"; then
-        # Verificar se existem templates DAST
-        if [[ -n "$templates_dir" ]] && [[ -d "$templates_dir" ]]; then
-            if ls "$templates_dir"/*dast* >/dev/null 2>&1 || ls "$templates_dir"/dast* >/dev/null 2>&1; then
-                has_dast=true
-                log_success "✅ DAST templates encontrados e suportados"
+    # Testar se Nuclei consegue listar templates (indica que estão configurados)
+    if nuclei -tl -silent 2>/dev/null | head -1 | grep -q "."; then
+        templates_ready=true
+        log_success "✅ Templates do Nuclei disponíveis"
+    else
+        log_warn "⚠️  Templates não encontrados ou desatualizados"
+        log_info "🔄 Baixando/atualizando templates do Nuclei (nuclei -ut)..."
+        if timeout 300 nuclei -ut -silent 2>&1 | tee logs/nuclei_update.log; then
+            # Verificar novamente após update
+            if nuclei -tl -silent 2>/dev/null | head -1 | grep -q "."; then
+                templates_ready=true
+                log_success "✅ Templates baixados com sucesso"
+            else
+                log_error "❌ Falha ao verificar templates após update"
             fi
+        else
+            log_error "❌ Falha ao baixar templates - verifique sua conexão"
         fi
     fi
     
-    if [[ "$has_dast" = false ]]; then
+    if [[ "$templates_ready" = false ]]; then
+        log_error "❌ Templates do Nuclei não disponíveis - pulando scan"
+        log_info "💡 Execute manualmente: nuclei -ut"
+        return 1
+    fi
+    
+    # Verificar se DAST é suportado (flag -dast)
+    local has_dast=false
+    if nuclei -help 2>&1 | grep -q "\-dast"; then
+        has_dast=true
+        log_success "✅ DAST mode suportado"
+    else
         log_warn "⚠️  DAST não disponível - usando templates de fuzzing padrão"
     fi
     
@@ -1995,26 +2001,20 @@ nuclei_scanning() {
             fi
         fi
         
-        # Fallback 1: Usar templates de fuzzing específicos
+        # Fallback 1: Usar tags de fuzzing (sintaxe moderna - sem path hardcoded)
         if [[ "$dast_success" = false ]]; then
-            log_info "🔄 Fallback 1: Usando templates de fuzzing diretos..."
-            if [[ -d "$HOME/nuclei-templates/fuzzing" ]] || [[ -d "$HOME/nuclei-templates/workflows" ]]; then
-                local fuzz_args=()
-                [[ -d "$HOME/nuclei-templates/fuzzing" ]] && fuzz_args+=(-t "$HOME/nuclei-templates/fuzzing/")
-                [[ -d "$HOME/nuclei-templates/workflows" ]] && fuzz_args+=(-t "$HOME/nuclei-templates/workflows/")
-                
-                if timeout 6h nuclei -l "$target_file" \
-                    "${fuzz_args[@]}" \
-                    -severity critical,high,medium,low \
-                    -stats \
-                    -rl "$RATE_LIMIT" -c "$reduced_concurrency" -timeout "$TEMPLATE_TIMEOUT" \
-                    -passive -headless -code \
-                    -follow-redirects \
-                    -store-resp -store-resp-dir nuclei/responses_fuzz \
-                    -o nuclei/nuclei_fuzzing_workflows.txt 2>&1 | tee logs/nuclei_fuzz_fallback.log; then
-                    log_success "✅ Fuzzing templates scan completo"
-                    dast_success=true
-                fi
+            log_info "🔄 Fallback 1: Usando tags de fuzzing e workflows..."
+            if timeout 6h nuclei -l "$target_file" \
+                -tags fuzzing,workflows,fuzz \
+                -severity critical,high,medium,low \
+                -stats \
+                -rl "$RATE_LIMIT" -c "$reduced_concurrency" -timeout "$TEMPLATE_TIMEOUT" \
+                -passive -headless -code \
+                -follow-redirects \
+                -store-resp -store-resp-dir nuclei/responses_fuzz \
+                -o nuclei/nuclei_fuzzing_workflows.txt 2>&1 | tee logs/nuclei_fuzz_fallback.log; then
+                log_success "✅ Fuzzing tags scan completo"
+                dast_success=true
             fi
         fi
         
