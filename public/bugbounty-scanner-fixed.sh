@@ -1782,35 +1782,37 @@ nuclei_scanning() {
         log_warn "⚠️ Falha ao atualizar templates - usando versão existente"
     fi
     
-    # CORREÇÃO: Verificar se templates estão disponíveis (sem hardcoded paths)
-    log_info "🔍 Verificando templates do Nuclei..."
-    local templates_ready=false
+    # CORREÇÃO: Não pré-verificar templates - executar direto e fazer fallback se falhar
+    log_info "🚀 Iniciando Nuclei (confiando na detecção automática de templates)..."
     
-    # Testar se Nuclei consegue listar templates (indica que estão configurados)
-    if nuclei -tl -silent 2>/dev/null | head -1 | grep -q "."; then
-        templates_ready=true
-        log_success "✅ Templates do Nuclei disponíveis"
-    else
-        log_warn "⚠️  Templates não encontrados ou desatualizados"
-        log_info "🔄 Baixando/atualizando templates do Nuclei (nuclei -ut)..."
-        if timeout 300 nuclei -ut -silent 2>&1 | tee logs/nuclei_update.log; then
-            # Verificar novamente após update
-            if nuclei -tl -silent 2>/dev/null | head -1 | grep -q "."; then
-                templates_ready=true
-                log_success "✅ Templates baixados com sucesso"
-            else
-                log_error "❌ Falha ao verificar templates após update"
-            fi
-        else
-            log_error "❌ Falha ao baixar templates - verifique sua conexão"
+    # Função auxiliar para executar nuclei com fallback automático
+    run_nuclei_with_fallback() {
+        local cmd="$1"
+        local output_file="$2"
+        local log_file="$3"
+        
+        # Primeira tentativa: executar o comando diretamente
+        if eval "$cmd" 2>&1 | tee "$log_file"; then
+            return 0
         fi
-    fi
-    
-    if [[ "$templates_ready" = false ]]; then
-        log_error "❌ Templates do Nuclei não disponíveis - pulando scan"
-        log_info "💡 Execute manualmente: nuclei -ut"
+        
+        # Se falhou com erro de templates, tentar atualizar e rodar novamente
+        if grep -qi "no templates\|template.*not found\|failed to load" "$log_file" 2>/dev/null; then
+            log_warn "⚠️  Nuclei reportou problema com templates - atualizando..."
+            if timeout 300 nuclei -ut -silent 2>&1 | tee logs/nuclei_update_fallback.log; then
+                log_success "✅ Templates atualizados - retentando scan..."
+                if eval "$cmd" 2>&1 | tee "${log_file%.log}_retry.log"; then
+                    return 0
+                fi
+            fi
+            log_error "❌ Scan falhou mesmo após atualização de templates"
+            return 1
+        fi
+        
+        # Outros erros (não relacionados a templates)
+        log_warn "⚠️  Nuclei retornou erro (não relacionado a templates)"
         return 1
-    fi
+    }
     
     # Verificar se DAST é suportado (flag -dast)
     local has_dast=false
