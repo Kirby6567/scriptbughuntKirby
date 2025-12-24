@@ -5051,7 +5051,7 @@ fi
 # Validar XSS com payload simples
 if [[ -s urls/gf_xss.txt ]]; then
     log_info "🔥 Validando XSS candidates..."
-    local xss_payload="<script>alert(1)</script>"
+    xss_payload="<script>alert(1)</script>"
     while IFS= read -r url || [[ -n "$url" ]]; do
         # Teste básico de XSS refletido
         if curl -s "${url}${xss_payload}" -m 10 2>/dev/null | grep -qF "$xss_payload"; then
