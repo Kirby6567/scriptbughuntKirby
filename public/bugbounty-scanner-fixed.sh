@@ -3174,7 +3174,9 @@ run_graphql_introspection() {
     mkdir -p reports/graphql logs
     
     # Timeout settings to prevent hangs
-    local req_timeout=30          # Per-request timeout (seconds)
+    # Requisito: nunca travar indefinidamente em firewall DROP / servers sem resposta
+    local req_timeout=300         # Per-request hard timeout (seconds) = 5 minutes
+    local connect_timeout=10      # Connect timeout (seconds)
     local max_endpoints=50        # Max endpoints to test
     local global_timeout=1800     # Global timeout for entire function (30 min)
     
@@ -3211,14 +3213,26 @@ run_graphql_introspection() {
             safe=$(echo "$endpoint" | sed 's/[^a-zA-Z0-9]/_/g')
             log_info "[$count/$total_endpoints] Testing GraphQL: $endpoint"
             
-            # Test introspection with timeout and error handling
-            timeout "${req_timeout}s" curl -X POST "$endpoint" \
-                -H "Content-Type: application/json" \
-                -H "User-Agent: Mozilla/5.0" \
-                -d "$introspection_query" \
-                --connect-timeout 10 \
-                --max-time "$req_timeout" \
-                -s -o "reports/graphql/introspection_${safe}.json" 2>/dev/null
+            # Test introspection directly; rely on curl hard timeouts (portable)
+            # If GNU timeout exists, wrap as an extra guard.
+            if command -v timeout >/dev/null 2>&1; then
+                timeout "${req_timeout}s" curl -X POST "$endpoint" \
+                    -H "Content-Type: application/json" \
+                    -H "User-Agent: Mozilla/5.0" \
+                    -d "$introspection_query" \
+                    --connect-timeout "$connect_timeout" \
+                    --max-time "$req_timeout" \
+                    -s -o "reports/graphql/introspection_${safe}.json" 2>/dev/null
+            else
+                curl -X POST "$endpoint" \
+                    -H "Content-Type: application/json" \
+                    -H "User-Agent: Mozilla/5.0" \
+                    -d "$introspection_query" \
+                    --connect-timeout "$connect_timeout" \
+                    --max-time "$req_timeout" \
+                    -s -o "reports/graphql/introspection_${safe}.json" 2>/dev/null
+            fi
+
 
             local exit_code=$?
             if [[ $exit_code -ne 0 ]]; then
