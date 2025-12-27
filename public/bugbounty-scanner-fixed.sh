@@ -3162,38 +3162,47 @@ run_ffuf_dir_fuzz() {
     
     log_success "✅ FFUF directory bruteforce completo"
 }
-
-# ============= GRAPHQL INTROSPECTION =============
+# ============= GRAPHQL INTROSPECTION (LAZY CREATION) =============
 run_graphql_introspection() {
-    if [[ ! -s apis/api_endpoints.txt ]]; then
-        log_info "⚠️  No API endpoints - skipping GraphQL introspection"
+    # FAIL-FAST: Verificar se existe input ANTES de qualquer processamento
+    if [[ ! -s apis/api_endpoints.txt ]] && [[ ! -s alive/hosts.txt ]]; then
+        log_info "⚠️  No API endpoints and no alive hosts - skipping GraphQL introspection"
         return 0
     fi
     
-    log_info "🔥 Running GraphQL Introspection..."
-    mkdir -p reports/graphql logs
+    log_info "🔥 Running GraphQL Introspection (Lazy Mode)..."
+    
+    # Criar diretório temporário para outputs (será movido apenas se houver resultados)
+    local temp_dir=$(mktemp -d /tmp/graphql_scan_XXXXXX)
     
     # Timeout settings to prevent hangs
-    # Requisito: nunca travar indefinidamente em firewall DROP / servers sem resposta
     local req_timeout=300         # Per-request hard timeout (seconds) = 5 minutes
     local connect_timeout=10      # Connect timeout (seconds)
     local max_endpoints=50        # Max endpoints to test
     local global_timeout=1800     # Global timeout for entire function (30 min)
     
-    # Look for GraphQL endpoints
-    grep -iE "graphql|gql" apis/api_endpoints.txt > reports/graphql/graphql_candidates.txt 2>/dev/null || true
+    # Build candidates list in temp
+    local candidates_file="$temp_dir/graphql_candidates.txt"
+    local vulnerable_file="$temp_dir/vulnerable_endpoints.txt"
     
-    # If not found, test common endpoints
-    if [[ ! -s reports/graphql/graphql_candidates.txt ]]; then
+    # Look for GraphQL endpoints (if api_endpoints exists)
+    if [[ -s apis/api_endpoints.txt ]]; then
+        grep -iE "graphql|gql" apis/api_endpoints.txt > "$candidates_file" 2>/dev/null || true
+    fi
+    
+    # If not found, test common endpoints from alive hosts
+    if [[ ! -s "$candidates_file" ]] && [[ -s alive/hosts.txt ]]; then
         head -10 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
             for path in /graphql /api/graphql /v1/graphql /gql /api/gql; do
-                echo "${url}${path}" >> reports/graphql/graphql_candidates.txt
+                echo "${url}${path}" >> "$candidates_file"
             done
         done
     fi
     
-    if [[ ! -s reports/graphql/graphql_candidates.txt ]]; then
-        log_info "⚠️  No GraphQL endpoints found"
+    # FAIL-FAST: Se ainda não há candidatos, limpar e sair
+    if [[ ! -s "$candidates_file" ]]; then
+        log_info "⚠️  No GraphQL endpoints found to test"
+        rm -rf "$temp_dir"
         return 0
     fi
     
@@ -3201,11 +3210,11 @@ run_graphql_introspection() {
     local introspection_query='{"query":"query IntrospectionQuery { __schema { queryType { name } mutationType { name } types { ...FullType } } } fragment FullType on __Type { kind name fields(includeDeprecated: true) { name args { ...InputValue } type { ...TypeRef } isDeprecated deprecationReason } }"}'
     
     local count=0
-    local total_endpoints=$(head -n "$max_endpoints" reports/graphql/graphql_candidates.txt | wc -l)
+    local total_endpoints=$(head -n "$max_endpoints" "$candidates_file" | wc -l)
     
     # Use timeout wrapper for entire loop to prevent infinite hangs
     (
-        head -n "$max_endpoints" reports/graphql/graphql_candidates.txt | while IFS= read -r endpoint || [[ -n "$endpoint" ]]; do
+        head -n "$max_endpoints" "$candidates_file" | while IFS= read -r endpoint || [[ -n "$endpoint" ]]; do
             # Skip empty lines
             [[ -z "$endpoint" ]] && continue
             
@@ -3213,8 +3222,9 @@ run_graphql_introspection() {
             safe=$(echo "$endpoint" | sed 's/[^a-zA-Z0-9]/_/g')
             log_info "[$count/$total_endpoints] Testing GraphQL: $endpoint"
             
-            # Test introspection directly; rely on curl hard timeouts (portable)
-            # If GNU timeout exists, wrap as an extra guard.
+            local output_file="$temp_dir/introspection_${safe}.json"
+            
+            # Test introspection with timeouts
             if command -v timeout >/dev/null 2>&1; then
                 timeout "${req_timeout}s" curl -X POST "$endpoint" \
                     -H "Content-Type: application/json" \
@@ -3222,7 +3232,7 @@ run_graphql_introspection() {
                     -d "$introspection_query" \
                     --connect-timeout "$connect_timeout" \
                     --max-time "$req_timeout" \
-                    -s -o "reports/graphql/introspection_${safe}.json" 2>/dev/null
+                    -s -o "$output_file" 2>/dev/null
             else
                 curl -X POST "$endpoint" \
                     -H "Content-Type: application/json" \
@@ -3230,29 +3240,35 @@ run_graphql_introspection() {
                     -d "$introspection_query" \
                     --connect-timeout "$connect_timeout" \
                     --max-time "$req_timeout" \
-                    -s -o "reports/graphql/introspection_${safe}.json" 2>/dev/null
+                    -s -o "$output_file" 2>/dev/null
             fi
-
-
+            
             local exit_code=$?
             if [[ $exit_code -ne 0 ]]; then
                 if [[ $exit_code -eq 124 ]]; then
                     log_warn "[!] GraphQL TIMEOUT (${req_timeout}s) for: $endpoint - Skipping"
-                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $endpoint" >> logs/graphql_timeouts.log
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $endpoint" >> "$temp_dir/graphql_timeouts.log"
                 else
                     log_warn "[!] GraphQL request failed for: $endpoint (exit: $exit_code) - Skipping"
-                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $endpoint (exit: $exit_code)" >> logs/graphql_errors.log
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $endpoint (exit: $exit_code)" >> "$temp_dir/graphql_errors.log"
                 fi
-                # Force next loop iteration (do not wait)
+                # Limpar arquivo vazio se existir
+                [[ -f "$output_file" ]] && [[ ! -s "$output_file" ]] && rm -f "$output_file"
                 continue
             fi
             
-            # Check if introspection worked
-            if [[ -s "reports/graphql/introspection_${safe}.json" ]]; then
-                if grep -q "__schema" "reports/graphql/introspection_${safe}.json"; then
+            # Check if introspection worked AND file has content
+            if [[ -s "$output_file" ]]; then
+                if grep -q "__schema" "$output_file"; then
                     log_success "✅ Introspection enabled at: $endpoint"
-                    echo "$endpoint" >> reports/graphql/vulnerable_endpoints.txt
+                    echo "$endpoint" >> "$vulnerable_file"
+                else
+                    # Response não contém dados úteis - remover
+                    rm -f "$output_file"
                 fi
+            else
+                # Arquivo vazio - remover
+                rm -f "$output_file"
             fi
         done
     ) &
@@ -3263,45 +3279,111 @@ run_graphql_introspection() {
         log_error "[!] GraphQL introspection GLOBAL TIMEOUT (${global_timeout}s) - Killing remaining processes"
         kill -TERM "$subshell_pid" 2>/dev/null || true
         wait "$subshell_pid" 2>/dev/null || true
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] GLOBAL TIMEOUT: GraphQL introspection exceeded ${global_timeout}s" >> logs/graphql_timeouts.log
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] GLOBAL TIMEOUT: GraphQL introspection exceeded ${global_timeout}s" >> "$temp_dir/graphql_timeouts.log"
     else
         wait "$subshell_pid" 2>/dev/null || true
     fi
     
-    if [[ -s reports/graphql/vulnerable_endpoints.txt ]]; then
-        local vuln_count=$(wc -l < reports/graphql/vulnerable_endpoints.txt)
-        log_success "🎯 $vuln_count GraphQL endpoints with introspection enabled"
-        send_notification "🚨 *GRAPHQL VULNERABILITY*
-🎯 $vuln_count endpoints with introspection enabled!
-📄 See: reports/graphql/vulnerable_endpoints.txt" "true"
+    # ============= LAZY DIRECTORY CREATION =============
+    # APENAS cria diretórios permanentes se houver resultados válidos
+    
+    local has_results=false
+    
+    # Verificar se há vulnerabilidades
+    if [[ -s "$vulnerable_file" ]]; then
+        has_results=true
     fi
     
-    # Report any timeouts
+    # Verificar se há arquivos JSON com dados úteis
+    if ls "$temp_dir"/introspection_*.json >/dev/null 2>&1; then
+        for f in "$temp_dir"/introspection_*.json; do
+            if [[ -s "$f" ]]; then
+                has_results=true
+                break
+            fi
+        done
+    fi
+    
+    if [[ "$has_results" = true ]]; then
+        # AGORA criar diretórios permanentes
+        mkdir -p reports/graphql logs
+        
+        # Mover arquivos úteis
+        if [[ -s "$vulnerable_file" ]]; then
+            mv "$vulnerable_file" reports/graphql/vulnerable_endpoints.txt
+        fi
+        
+        # Mover JSONs válidos (não vazios)
+        for f in "$temp_dir"/introspection_*.json; do
+            [[ -s "$f" ]] && mv "$f" reports/graphql/
+        done
+        
+        # Mover logs de erro/timeout
+        [[ -s "$temp_dir/graphql_timeouts.log" ]] && mkdir -p logs && mv "$temp_dir/graphql_timeouts.log" logs/
+        [[ -s "$temp_dir/graphql_errors.log" ]] && mkdir -p logs && mv "$temp_dir/graphql_errors.log" logs/
+        
+        local vuln_count=$(wc -l < reports/graphql/vulnerable_endpoints.txt 2>/dev/null || echo 0)
+        log_success "🎯 $vuln_count GraphQL endpoints with introspection enabled"
+        
+        if [[ "$vuln_count" -gt 0 ]]; then
+            send_notification "🚨 *GRAPHQL VULNERABILITY*
+🎯 $vuln_count endpoints with introspection enabled!
+📄 See: reports/graphql/vulnerable_endpoints.txt" "true"
+        fi
+    else
+        log_info "⚠️  GraphQL scan completed - No vulnerabilities found (no directories created)"
+        # Mover apenas logs de erro/timeout se existirem
+        if [[ -s "$temp_dir/graphql_timeouts.log" ]] || [[ -s "$temp_dir/graphql_errors.log" ]]; then
+            mkdir -p logs
+            [[ -s "$temp_dir/graphql_timeouts.log" ]] && mv "$temp_dir/graphql_timeouts.log" logs/
+            [[ -s "$temp_dir/graphql_errors.log" ]] && mv "$temp_dir/graphql_errors.log" logs/
+        fi
+    fi
+    
+    # Limpar diretório temporário
+    rm -rf "$temp_dir"
+    
+    # Report any timeouts (se logs foram movidos)
     if [[ -s logs/graphql_timeouts.log ]]; then
         local timeout_count=$(wc -l < logs/graphql_timeouts.log)
         log_warn "⚠️  $timeout_count GraphQL endpoints timed out (see logs/graphql_timeouts.log)"
     fi
 }
 
-# ============= CORS TESTING BRUTAL =============
+# ============= CORS TESTING (LAZY CREATION + TIMEOUTS) =============
 run_cors_testing() {
+    # FAIL-FAST: Verificar input
     if [[ ! -s alive/hosts.txt ]]; then
         log_info "⚠️  Nenhum host - pulando CORS testing"
         return 0
     fi
     
-    log_info "🔥 Executando CORS Testing BRUTAL..."
-    mkdir -p reports/cors logs
+    log_info "🔥 Executando CORS Testing (Lazy Mode)..."
     
-    # Usar corsy se disponível
+    # Criar diretório temporário
+    local temp_dir=$(mktemp -d /tmp/cors_scan_XXXXXX)
+    local vulnerable_file="$temp_dir/vulnerable_cors.txt"
+    local corsy_file="$temp_dir/corsy_results.json"
+    local errors_file="$temp_dir/cors_errors.log"
+    local timeouts_file="$temp_dir/cors_timeouts.log"
+    
+    # Timeout settings
+    local req_timeout=15          # Per-request timeout (15 seconds)
+    local connect_timeout=5       # Connect timeout (5 seconds)
+    local global_timeout=1200     # Global timeout (20 min)
+    local max_hosts=20
+    [[ "$PROFILE" = "aggressive" ]] && max_hosts=50
+    [[ "$PROFILE" = "kamikaze" ]] && max_hosts=100
+    
+    # Usar corsy se disponível (com timeout)
     if command -v corsy >/dev/null 2>&1; then
         log_info "▶️  Usando Corsy para testes avançados..."
         timeout 600s corsy -i alive/hosts.txt \
             -t 50 \
-            -o reports/cors/corsy_results.json 2>>logs/cors_errors.log || true
+            -o "$corsy_file" 2>>"$errors_file" || true
     fi
     
-    # Testes manuais de CORS
+    # Testes manuais de CORS com timeouts
     log_info "▶️  Executando testes manuais de CORS..."
     
     local test_origins=(
@@ -3312,31 +3394,110 @@ run_cors_testing() {
         "https://trusted-domain.evil.com"
     )
     
-    head -20 alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
-        safe=$(echo "$url" | sed 's/[^a-zA-Z0-9]/_/g')
-        
-        for origin in "${test_origins[@]}"; do
-            response=$(timeout 10s curl -s -I "$url" \
-                -H "Origin: $origin" \
-                -H "User-Agent: Mozilla/5.0" \
-                2>/dev/null || true)
-            
-            if echo "$response" | grep -qi "access-control-allow-origin: $origin"; then
-                echo "VULNERABLE: $url reflects origin: $origin" >> reports/cors/vulnerable_cors.txt
-                log_warn "⚠️  CORS misconfiguration: $url reflects $origin"
-            elif echo "$response" | grep -qi "access-control-allow-origin: \*"; then
-                echo "VULNERABLE: $url allows wildcard origin" >> reports/cors/vulnerable_cors.txt
-                log_warn "⚠️  CORS wildcard: $url allows any origin"
-            fi
-        done
-    done
+    local count=0
+    local total_hosts=$(head -n "$max_hosts" alive/hosts.txt | wc -l)
     
-    if [[ -s reports/cors/vulnerable_cors.txt ]]; then
-        local cors_count=$(wc -l < reports/cors/vulnerable_cors.txt)
+    (
+        head -n "$max_hosts" alive/hosts.txt | while IFS= read -r url || [[ -n "$url" ]]; do
+            [[ -z "$url" ]] && continue
+            
+            count=$((count + 1))
+            log_info "[$count/$total_hosts] CORS Testing: $url"
+            
+            for origin in "${test_origins[@]}"; do
+                # Timeout wrapper para evitar travamentos em WAFs
+                if command -v timeout >/dev/null 2>&1; then
+                    response=$(timeout "${req_timeout}s" curl -s -I "$url" \
+                        -H "Origin: $origin" \
+                        -H "User-Agent: Mozilla/5.0" \
+                        --connect-timeout "$connect_timeout" \
+                        --max-time "$req_timeout" \
+                        2>/dev/null) || {
+                        local exit_code=$?
+                        if [[ $exit_code -eq 124 ]]; then
+                            echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $url (origin: $origin)" >> "$timeouts_file"
+                        fi
+                        continue
+                    }
+                else
+                    response=$(curl -s -I "$url" \
+                        -H "Origin: $origin" \
+                        -H "User-Agent: Mozilla/5.0" \
+                        --connect-timeout "$connect_timeout" \
+                        --max-time "$req_timeout" \
+                        2>/dev/null) || continue
+                fi
+                
+                if echo "$response" | grep -qi "access-control-allow-origin: $origin"; then
+                    echo "VULNERABLE: $url reflects origin: $origin" >> "$vulnerable_file"
+                    log_warn "⚠️  CORS misconfiguration: $url reflects $origin"
+                elif echo "$response" | grep -qi "access-control-allow-origin: \*"; then
+                    echo "VULNERABLE: $url allows wildcard origin" >> "$vulnerable_file"
+                    log_warn "⚠️  CORS wildcard: $url allows any origin"
+                fi
+            done
+        done
+    ) &
+    
+    # Wait with global timeout
+    local subshell_pid=$!
+    if ! timeout "${global_timeout}s" tail --pid="$subshell_pid" -f /dev/null 2>/dev/null; then
+        log_error "[!] CORS testing GLOBAL TIMEOUT (${global_timeout}s) - Killing"
+        kill -TERM "$subshell_pid" 2>/dev/null || true
+        wait "$subshell_pid" 2>/dev/null || true
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] GLOBAL TIMEOUT: CORS testing exceeded ${global_timeout}s" >> "$timeouts_file"
+    else
+        wait "$subshell_pid" 2>/dev/null || true
+    fi
+    
+    # ============= LAZY DIRECTORY CREATION =============
+    local has_results=false
+    
+    # Verificar se há vulnerabilidades
+    if [[ -s "$vulnerable_file" ]]; then
+        has_results=true
+    fi
+    
+    # Verificar resultados do Corsy
+    if [[ -s "$corsy_file" ]]; then
+        has_results=true
+    fi
+    
+    if [[ "$has_results" = true ]]; then
+        # Criar diretórios permanentes
+        mkdir -p reports/cors logs
+        
+        # Mover arquivos úteis
+        [[ -s "$vulnerable_file" ]] && mv "$vulnerable_file" reports/cors/vulnerable_cors.txt
+        [[ -s "$corsy_file" ]] && mv "$corsy_file" reports/cors/corsy_results.json
+        [[ -s "$errors_file" ]] && mv "$errors_file" logs/cors_errors.log
+        [[ -s "$timeouts_file" ]] && mv "$timeouts_file" logs/cors_timeouts.log
+        
+        local cors_count=$(wc -l < reports/cors/vulnerable_cors.txt 2>/dev/null || echo 0)
         log_success "🎯 $cors_count CORS misconfigurations encontrados"
-        send_notification "🚨 *CORS VULNERABILITY*
+        
+        if [[ "$cors_count" -gt 0 ]]; then
+            send_notification "🚨 *CORS VULNERABILITY*
 🎯 $cors_count CORS misconfigurations!
 📄 Veja: reports/cors/vulnerable_cors.txt" "true"
+        fi
+    else
+        log_info "⚠️  CORS scan completed - No vulnerabilities found (no directories created)"
+        # Mover logs se existirem
+        if [[ -s "$timeouts_file" ]] || [[ -s "$errors_file" ]]; then
+            mkdir -p logs
+            [[ -s "$timeouts_file" ]] && mv "$timeouts_file" logs/cors_timeouts.log
+            [[ -s "$errors_file" ]] && mv "$errors_file" logs/cors_errors.log
+        fi
+    fi
+    
+    # Limpar temp
+    rm -rf "$temp_dir"
+    
+    # Report timeouts
+    if [[ -s logs/cors_timeouts.log ]]; then
+        local timeout_count=$(wc -l < logs/cors_timeouts.log)
+        log_warn "⚠️  $timeout_count CORS requests timed out (see logs/cors_timeouts.log)"
     fi
 }
 
@@ -3658,10 +3819,12 @@ export -f run_cors_testing
 export -f run_multicloud_enum
 export -f run_cvss_scoring
 export -f run_meg
-export -f run_jaeles
 export -f run_arjun_brutal
+export -f run_ssrfmap
+export -f run_takeover_checks
+export -f run_endpoint_discovery
 
-log_info "✅ Brutal Extensions carregado - todas as funções disponíveis"
+log_info "✅ Lazy Creation Extensions carregado - todas as funções disponíveis"
 
 
 # ============= CVSS AUTO-SCORING =============
@@ -3797,24 +3960,430 @@ run_smuggler() {
     fi
 }
 
-# ============= SSRFMAP - SSRF Testing =============
+# ============= SSRFMAP - SSRF Testing (LAZY CREATION + TIMEOUTS) =============
 run_ssrfmap() {
+    # FAIL-FAST: Verificar input
     if [[ ! -s urls/gf_ssrf.txt ]]; then
         log_info "⚠️  Nenhum candidato SSRF - pulando ssrfmap"
         return 0
     fi
     
-    if command -v ssrfmap >/dev/null 2>&1; then
-        log_info "▶️  Executando ssrfmap..."
-        mkdir -p reports/ssrfmap
-        
-        head -10 urls/gf_ssrf.txt | while read -r url; do
+    if ! command -v ssrfmap >/dev/null 2>&1; then
+        log_info "⚠️  ssrfmap não instalado - pulando"
+        return 0
+    fi
+    
+    log_info "🔥 Executando SSRF Testing (Lazy Mode)..."
+    
+    # Criar diretório temporário
+    local temp_dir=$(mktemp -d /tmp/ssrf_scan_XXXXXX)
+    local results_dir="$temp_dir/results"
+    local vulnerable_file="$temp_dir/ssrf_vulnerable.txt"
+    local errors_file="$temp_dir/ssrf_errors.log"
+    local timeouts_file="$temp_dir/ssrf_timeouts.log"
+    
+    mkdir -p "$results_dir"
+    
+    # Timeout settings
+    local req_timeout=300         # Per-request timeout (5 min)
+    local connect_timeout=10      # Connect timeout
+    local global_timeout=1800     # Global timeout (30 min)
+    local max_urls=10
+    [[ "$PROFILE" = "aggressive" ]] && max_urls=25
+    [[ "$PROFILE" = "kamikaze" ]] && max_urls=50
+    
+    local count=0
+    local total_urls=$(head -n "$max_urls" urls/gf_ssrf.txt | wc -l)
+    
+    (
+        head -n "$max_urls" urls/gf_ssrf.txt | while IFS= read -r url || [[ -n "$url" ]]; do
+            [[ -z "$url" ]] && continue
+            
+            count=$((count + 1))
             safe_name=$(echo "$url" | md5sum | cut -c1-8)
-            timeout 180s ssrfmap -r "$url" -p payloads --output reports/ssrfmap/ssrf_${safe_name}.txt 2>/dev/null || true
+            log_info "[$count/$total_urls] SSRF Testing: $url"
+            
+            local output_file="$results_dir/ssrf_${safe_name}.txt"
+            
+            # Executar ssrfmap com timeout
+            if command -v timeout >/dev/null 2>&1; then
+                timeout "${req_timeout}s" ssrfmap -r "$url" -p payloads --output "$output_file" 2>>"$errors_file"
+            else
+                ssrfmap -r "$url" -p payloads --output "$output_file" 2>>"$errors_file" &
+                local pid=$!
+                sleep "${req_timeout}"
+                kill -0 "$pid" 2>/dev/null && kill -TERM "$pid" 2>/dev/null
+                wait "$pid" 2>/dev/null || true
+            fi
+            
+            local exit_code=$?
+            if [[ $exit_code -eq 124 ]]; then
+                log_warn "[!] SSRF TIMEOUT (${req_timeout}s) for: $url - Skipping"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT: $url" >> "$timeouts_file"
+                # Remover arquivo vazio
+                [[ -f "$output_file" ]] && [[ ! -s "$output_file" ]] && rm -f "$output_file"
+                continue
+            fi
+            
+            # Verificar se encontrou algo
+            if [[ -s "$output_file" ]]; then
+                if grep -qiE "vulnerable|ssrf|confirmed|success" "$output_file"; then
+                    echo "$url" >> "$vulnerable_file"
+                    log_warn "🚨 SSRF potential vulnerability: $url"
+                fi
+            else
+                # Remover arquivo vazio
+                [[ -f "$output_file" ]] && rm -f "$output_file"
+            fi
+        done
+    ) &
+    
+    # Wait with global timeout
+    local subshell_pid=$!
+    if ! timeout "${global_timeout}s" tail --pid="$subshell_pid" -f /dev/null 2>/dev/null; then
+        log_error "[!] SSRF testing GLOBAL TIMEOUT (${global_timeout}s) - Killing"
+        kill -TERM "$subshell_pid" 2>/dev/null || true
+        wait "$subshell_pid" 2>/dev/null || true
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] GLOBAL TIMEOUT: SSRF testing exceeded ${global_timeout}s" >> "$timeouts_file"
+    else
+        wait "$subshell_pid" 2>/dev/null || true
+    fi
+    
+    # ============= LAZY DIRECTORY CREATION =============
+    local has_results=false
+    
+    # Verificar se há resultados em qualquer arquivo
+    if [[ -s "$vulnerable_file" ]]; then
+        has_results=true
+    fi
+    
+    # Verificar arquivos de resultado não vazios
+    if ls "$results_dir"/*.txt >/dev/null 2>&1; then
+        for f in "$results_dir"/*.txt; do
+            if [[ -s "$f" ]]; then
+                has_results=true
+                break
+            fi
+        done
+    fi
+    
+    if [[ "$has_results" = true ]]; then
+        # Criar diretórios permanentes
+        mkdir -p reports/ssrfmap logs
+        
+        # Mover arquivos úteis (não vazios)
+        for f in "$results_dir"/*.txt; do
+            [[ -s "$f" ]] && mv "$f" reports/ssrfmap/
         done
         
-        log_info "✅ ssrfmap completo"
+        [[ -s "$vulnerable_file" ]] && mv "$vulnerable_file" reports/ssrfmap/ssrf_vulnerable.txt
+        [[ -s "$errors_file" ]] && mv "$errors_file" logs/ssrf_errors.log
+        [[ -s "$timeouts_file" ]] && mv "$timeouts_file" logs/ssrf_timeouts.log
+        
+        local vuln_count=$(wc -l < reports/ssrfmap/ssrf_vulnerable.txt 2>/dev/null || echo 0)
+        local file_count=$(ls reports/ssrfmap/*.txt 2>/dev/null | wc -l || echo 0)
+        log_success "✅ SSRF scan completo - $file_count resultados, $vuln_count potenciais vulnerabilidades"
+        
+        if [[ "$vuln_count" -gt 0 ]]; then
+            send_notification "🚨 *SSRF VULNERABILITY*
+🎯 $vuln_count potenciais SSRF encontrados!
+📄 Veja: reports/ssrfmap/" "true"
+        fi
+    else
+        log_info "⚠️  SSRF scan completed - No results (no directories created)"
+        # Mover logs se existirem
+        if [[ -s "$timeouts_file" ]] || [[ -s "$errors_file" ]]; then
+            mkdir -p logs
+            [[ -s "$timeouts_file" ]] && mv "$timeouts_file" logs/ssrf_timeouts.log
+            [[ -s "$errors_file" ]] && mv "$errors_file" logs/ssrf_errors.log
+        fi
     fi
+    
+    # Limpar temp
+    rm -rf "$temp_dir"
+    
+    # Report timeouts
+    if [[ -s logs/ssrf_timeouts.log ]]; then
+        local timeout_count=$(wc -l < logs/ssrf_timeouts.log)
+        log_warn "⚠️  $timeout_count SSRF requests timed out (see logs/ssrf_timeouts.log)"
+    fi
+}
+
+# ============= SUBDOMAIN TAKEOVER (LAZY CREATION + TIMEOUTS) =============
+run_takeover_checks() {
+    # FAIL-FAST: Verificar input
+    if [[ ! -s subs/all_subs.txt ]]; then
+        log_info "⚠️  Nenhum subdomínio - pulando takeover checks"
+        return 0
+    fi
+    
+    log_info "🔥 Executando Subdomain Takeover Checks (Lazy Mode)..."
+    
+    # Criar diretório temporário
+    local temp_dir=$(mktemp -d /tmp/takeover_scan_XXXXXX)
+    local vulnerable_file="$temp_dir/takeover_vulnerable.txt"
+    local subjack_file="$temp_dir/subjack_results.json"
+    local errors_file="$temp_dir/takeover_errors.log"
+    local timeouts_file="$temp_dir/takeover_timeouts.log"
+    
+    # Timeout settings
+    local req_timeout=30          # Per-subdomain timeout
+    local global_timeout=1800     # Global timeout (30 min)
+    local max_subs=100
+    [[ "$PROFILE" = "aggressive" ]] && max_subs=500
+    [[ "$PROFILE" = "kamikaze" ]] && max_subs=1000
+    
+    # Usar subjack se disponível
+    if command -v subjack >/dev/null 2>&1; then
+        log_info "▶️  Usando Subjack para verificação..."
+        
+        # Preparar arquivo de entrada limitado
+        head -n "$max_subs" subs/all_subs.txt > "$temp_dir/subs_to_check.txt"
+        
+        timeout "${global_timeout}s" subjack \
+            -w "$temp_dir/subs_to_check.txt" \
+            -t 50 \
+            -timeout 30 \
+            -ssl \
+            -o "$subjack_file" \
+            -v 2>>"$errors_file" || {
+                local exit_code=$?
+                if [[ $exit_code -eq 124 ]]; then
+                    log_warn "[!] Subjack GLOBAL TIMEOUT (${global_timeout}s)"
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] GLOBAL TIMEOUT: subjack" >> "$timeouts_file"
+                fi
+            }
+    fi
+    
+    # Verificações manuais de CNAME para serviços conhecidos
+    log_info "▶️  Executando verificações manuais de CNAME..."
+    
+    local takeover_patterns=(
+        "github.io:There isn't a GitHub Pages site here"
+        "herokuapp.com:No such app"
+        "pantheonsite.io:404 error unknown site"
+        "amazonaws.com:NoSuchBucket"
+        "cloudfront.net:Bad Request"
+        "azure-api.net:404 Web Site not found"
+        "azurewebsites.net:404 Web Site not found"
+        "cloudapp.net:404"
+        "s3.amazonaws.com:NoSuchBucket"
+        "shopify.com:Sorry, this shop is currently unavailable"
+        "fastly.net:Fastly error: unknown domain"
+        "ghost.io:The thing you were looking for is no longer here"
+        "helpjuice.com:We could not find what you're looking for"
+        "helpscoutdocs.com:No settings were found for this company"
+        "surge.sh:project not found"
+        "bitbucket.io:Repository not found"
+        "zendesk.com:Help Center Closed"
+        "teamwork.com:Oops - We didn't find your site"
+        "unbounce.com:The requested URL was not found on this server"
+        "readme.io:Project doesnt exist"
+    )
+    
+    local count=0
+    local total_subs=$(head -n "$max_subs" subs/all_subs.txt | wc -l)
+    
+    (
+        head -n "$max_subs" subs/all_subs.txt | while IFS= read -r subdomain || [[ -n "$subdomain" ]]; do
+            [[ -z "$subdomain" ]] && continue
+            
+            count=$((count + 1))
+            
+            # Log a cada 50 subdomínios
+            if [[ $((count % 50)) -eq 0 ]]; then
+                log_info "[$count/$total_subs] Takeover check progress..."
+            fi
+            
+            # Verificar CNAME
+            cname=$(timeout 5s dig +short CNAME "$subdomain" 2>/dev/null | head -1)
+            
+            if [[ -n "$cname" ]]; then
+                for pattern in "${takeover_patterns[@]}"; do
+                    service="${pattern%%:*}"
+                    fingerprint="${pattern##*:}"
+                    
+                    if echo "$cname" | grep -qi "$service"; then
+                        # Verificar se página retorna fingerprint de takeover
+                        response=$(timeout "${req_timeout}s" curl -s -L "http://$subdomain" \
+                            --connect-timeout 5 \
+                            --max-time "${req_timeout}" \
+                            2>/dev/null | head -c 5000)
+                        
+                        if echo "$response" | grep -qi "$fingerprint"; then
+                            echo "VULNERABLE: $subdomain -> $cname ($service)" >> "$vulnerable_file"
+                            log_warn "🚨 Takeover: $subdomain -> $cname"
+                        fi
+                    fi
+                done
+            fi
+        done
+    ) &
+    
+    # Wait with global timeout
+    local subshell_pid=$!
+    if ! timeout "${global_timeout}s" tail --pid="$subshell_pid" -f /dev/null 2>/dev/null; then
+        log_error "[!] Takeover checks GLOBAL TIMEOUT (${global_timeout}s) - Killing"
+        kill -TERM "$subshell_pid" 2>/dev/null || true
+        wait "$subshell_pid" 2>/dev/null || true
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] GLOBAL TIMEOUT: Manual takeover checks" >> "$timeouts_file"
+    else
+        wait "$subshell_pid" 2>/dev/null || true
+    fi
+    
+    # ============= LAZY DIRECTORY CREATION =============
+    local has_results=false
+    
+    if [[ -s "$vulnerable_file" ]]; then
+        has_results=true
+    fi
+    
+    if [[ -s "$subjack_file" ]]; then
+        # Verificar se subjack encontrou algo (não apenas JSON vazio)
+        if [[ $(wc -c < "$subjack_file") -gt 10 ]]; then
+            has_results=true
+        fi
+    fi
+    
+    if [[ "$has_results" = true ]]; then
+        # Criar diretórios permanentes
+        mkdir -p reports/takeover logs
+        
+        [[ -s "$vulnerable_file" ]] && mv "$vulnerable_file" reports/takeover/takeover_vulnerable.txt
+        [[ -s "$subjack_file" ]] && [[ $(wc -c < "$subjack_file") -gt 10 ]] && mv "$subjack_file" reports/takeover/subjack_results.json
+        [[ -s "$errors_file" ]] && mv "$errors_file" logs/takeover_errors.log
+        [[ -s "$timeouts_file" ]] && mv "$timeouts_file" logs/takeover_timeouts.log
+        
+        local vuln_count=$(wc -l < reports/takeover/takeover_vulnerable.txt 2>/dev/null || echo 0)
+        log_success "🎯 $vuln_count subdomain takeover vulnerabilities encontradas"
+        
+        if [[ "$vuln_count" -gt 0 ]]; then
+            send_notification "🚨 *SUBDOMAIN TAKEOVER*
+🎯 $vuln_count subdomínios vulneráveis!
+📄 Veja: reports/takeover/takeover_vulnerable.txt" "true"
+        fi
+    else
+        log_info "⚠️  Takeover scan completed - No vulnerabilities found (no directories created)"
+        # Mover logs se existirem
+        if [[ -s "$timeouts_file" ]] || [[ -s "$errors_file" ]]; then
+            mkdir -p logs
+            [[ -s "$timeouts_file" ]] && mv "$timeouts_file" logs/takeover_timeouts.log
+            [[ -s "$errors_file" ]] && mv "$errors_file" logs/takeover_errors.log
+        fi
+    fi
+    
+    # Limpar temp
+    rm -rf "$temp_dir"
+}
+
+# ============= ENDPOINT DISCOVERY (LAZY CREATION) =============
+run_endpoint_discovery() {
+    # FAIL-FAST: Verificar inputs
+    if [[ ! -d js/downloads ]] && [[ ! -s alive/hosts.txt ]]; then
+        log_info "⚠️  Nenhum JS ou host disponível - pulando endpoint discovery"
+        return 0
+    fi
+    
+    log_info "🔥 Executando Endpoint Discovery (Lazy Mode)..."
+    
+    # Criar diretório temporário
+    local temp_dir=$(mktemp -d /tmp/endpoints_scan_XXXXXX)
+    local all_endpoints="$temp_dir/all_endpoints.txt"
+    local api_endpoints="$temp_dir/api_endpoints.txt"
+    local sensitive_endpoints="$temp_dir/sensitive_endpoints.txt"
+    local errors_file="$temp_dir/endpoints_errors.log"
+    
+    # Timeout settings
+    local req_timeout=60
+    local global_timeout=1200     # 20 min
+    local max_js_files=100
+    [[ "$PROFILE" = "aggressive" ]] && max_js_files=300
+    [[ "$PROFILE" = "kamikaze" ]] && max_js_files=500
+    
+    # Extrair endpoints de arquivos JS baixados
+    if [[ -d js/downloads ]] && [[ "$(ls -A js/downloads 2>/dev/null)" ]]; then
+        log_info "▶️  Extraindo endpoints de arquivos JS..."
+        
+        local js_count=0
+        find js/downloads -type f -name "*.js" | head -n "$max_js_files" | while IFS= read -r jsfile; do
+            js_count=$((js_count + 1))
+            
+            # Extrair URLs e paths de arquivos JS
+            grep -oP '["'"'"'](/[a-zA-Z0-9_/.-]+)["'"'"']' "$jsfile" 2>/dev/null | \
+                tr -d "\"'" | sort -u >> "$all_endpoints" 2>>"$errors_file" || true
+            
+            # Extrair endpoints de API
+            grep -oP '["'"'"'](https?://[^"'"'"']+|/api/[^"'"'"']+|/v[0-9]+/[^"'"'"']+)["'"'"']' "$jsfile" 2>/dev/null | \
+                tr -d "\"'" | sort -u >> "$api_endpoints" 2>>"$errors_file" || true
+        done
+        
+        log_info "✅ Analisados $(find js/downloads -type f -name "*.js" | head -n "$max_js_files" | wc -l) arquivos JS"
+    fi
+    
+    # Usar linkfinder se disponível
+    if command -v linkfinder >/dev/null 2>&1 && [[ -d js/downloads ]]; then
+        log_info "▶️  Usando linkfinder para extração avançada..."
+        
+        find js/downloads -type f -name "*.js" | head -n "$max_js_files" | while IFS= read -r jsfile; do
+            timeout "${req_timeout}s" linkfinder -i "$jsfile" -o cli 2>/dev/null >> "$all_endpoints" || true
+        done
+    fi
+    
+    # Identificar endpoints sensíveis
+    if [[ -s "$all_endpoints" ]]; then
+        log_info "▶️  Identificando endpoints sensíveis..."
+        
+        grep -iE "(admin|config|backup|debug|test|dev|staging|internal|private|secret|api/v|graphql|auth|login|register|password|token|key|credential|aws|azure|gcp)" \
+            "$all_endpoints" 2>/dev/null | sort -u > "$sensitive_endpoints" || true
+    fi
+    
+    # Deduplicar resultados
+    if [[ -s "$all_endpoints" ]]; then
+        sort -u "$all_endpoints" -o "$all_endpoints"
+    fi
+    if [[ -s "$api_endpoints" ]]; then
+        sort -u "$api_endpoints" -o "$api_endpoints"
+    fi
+    
+    # ============= LAZY DIRECTORY CREATION =============
+    local has_results=false
+    
+    if [[ -s "$all_endpoints" ]]; then
+        local endpoint_count=$(wc -l < "$all_endpoints")
+        if [[ "$endpoint_count" -gt 0 ]]; then
+            has_results=true
+        fi
+    fi
+    
+    if [[ "$has_results" = true ]]; then
+        # Criar diretórios permanentes
+        mkdir -p endpoints logs
+        
+        [[ -s "$all_endpoints" ]] && mv "$all_endpoints" endpoints/all_endpoints.txt
+        [[ -s "$api_endpoints" ]] && mv "$api_endpoints" endpoints/api_endpoints.txt
+        [[ -s "$sensitive_endpoints" ]] && mv "$sensitive_endpoints" endpoints/sensitive_endpoints.txt
+        [[ -s "$errors_file" ]] && mv "$errors_file" logs/endpoints_errors.log
+        
+        local total_count=$(wc -l < endpoints/all_endpoints.txt 2>/dev/null || echo 0)
+        local api_count=$(wc -l < endpoints/api_endpoints.txt 2>/dev/null || echo 0)
+        local sensitive_count=$(wc -l < endpoints/sensitive_endpoints.txt 2>/dev/null || echo 0)
+        
+        log_success "✅ Endpoint Discovery completo"
+        log_info "📊 Total: $total_count endpoints | APIs: $api_count | Sensíveis: $sensitive_count"
+        
+        if [[ "$sensitive_count" -gt 0 ]]; then
+            send_notification "🔍 *ENDPOINT DISCOVERY*
+📊 $total_count endpoints encontrados
+🔌 $api_count API endpoints
+⚠️ $sensitive_count endpoints sensíveis!
+📄 Veja: endpoints/sensitive_endpoints.txt" "false"
+        fi
+    else
+        log_info "⚠️  Endpoint discovery completed - No endpoints found (no directories created)"
+    fi
+    
+    # Limpar temp
+    rm -rf "$temp_dir"
 }
 
 # ============= HTTPROBE - Additional HTTP Probing =============
