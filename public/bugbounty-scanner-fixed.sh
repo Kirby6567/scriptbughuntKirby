@@ -3820,11 +3820,8 @@ export -f run_multicloud_enum
 export -f run_cvss_scoring
 export -f run_meg
 export -f run_arjun_brutal
-export -f run_ssrfmap
-export -f run_takeover_checks
-export -f run_endpoint_discovery
 
-log_info "✅ Lazy Creation Extensions carregado - todas as funções disponíveis"
+log_info "✅ Extensions Pt.1 carregadas"
 
 
 # ============= CVSS AUTO-SCORING =============
@@ -4385,6 +4382,13 @@ run_endpoint_discovery() {
     # Limpar temp
     rm -rf "$temp_dir"
 }
+
+# ============= EXPORTS DAS FUNÇÕES LAZY (após definição) =============
+export -f run_ssrfmap
+export -f run_takeover_checks
+export -f run_endpoint_discovery
+
+log_info "✅ Lazy Creation Functions (SSRF, Takeover, Endpoints) carregadas"
 
 # ============= HTTPROBE - Additional HTTP Probing =============
 run_httprobe() {
